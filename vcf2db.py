@@ -43,20 +43,18 @@ def profiled():
     # ps.print_callers()
     print s.getvalue()
 
-def set_column_length(column, length, saved={}):
-    #if t.engine
+def set_column_length(e, column, length, saved={}):
     table = column.table
-    e = table.metadata.bind
-
     c = column.table.columns[column.name]
     if c.type.length >= length:
         return
     c.type.length = length
-    if saved.get(c.name, 0) < length:
+    column.type.length = length
+    if saved.get((table.name, c.name), 0) < length:
         sys.stderr.write("changing varchar field '%s' to length %d\n" %
                                      (c.name,  length))
-    saved[c.name] = c.type.length
-    if e.dialect.name == "postgres":
+    saved[(table.name, c.name)] = c.type.length
+    if e.dialect.name.startswith("postgres"):
         e.execute('ALTER TABLE %s ALTER COLUMN %s TYPE VARCHAR(%d)' %
                             (table.name, c.name, length))
     elif e.dialect.name == "mysql":
@@ -110,7 +108,7 @@ class VCFDB(object):
         if not db_path.startswith(("sqlite:", "mysql", "postgres")):
                 db_path = "sqlite:///" + db_path
         self.db_path = db_path
-        self.engine = sql.create_engine(db_path)
+        self.engine = sql.create_engine(db_path, poolclass=sql.pool.NullPool)
         self.impacts_headers = {}
         self.metadata = sql.MetaData(bind=self.engine)
 
@@ -229,34 +227,42 @@ class VCFDB(object):
 
         for name, clen in vlengths.items():
             col = self.variants.columns[name]
-            set_column_length(col, clen)
+            set_column_length(self.engine, col, clen)
 
-        self.__insert(v_objs, self.variants.insert())
+        self.__insert(v_objs, self.metadata.tables['variants'].insert())
 
         for name, clen in vilengths.items():
             col = self.variant_impacts.columns[name]
-            set_column_length(col, clen)
+            set_column_length(self.engine, col, clen)
 
-        self.__insert(vi_objs, self.variant_impacts.insert())
+        self.__insert(vi_objs, self.metadata.tables['variant_impacts'].insert())
 
 
     def __insert(self, objs, stmt):
 
         tx = time.time()
-        try:
-            # (2006, 'MySQL server has gone away'
-            # if you see this, need to increase max_allowed_packet and/or other
-            # params in my.cnf (or we should detect and reduce the chunk size)
-            if len(objs) > 6000:
-                for group in grouper(5000, objs):
-                    self.engine.execute(stmt, list(group))
-            else:
+        # (2006, 'MySQL server has gone away'
+        # if you see this, need to increase max_allowed_packet and/or other
+        # params in my.cnf (or we should detect and reduce the chunk size)
+        if len(objs) > 6000:
+            for group in grouper(5000, objs):
+                g = list(group)
+                try:
+                    self.engine.execute(stmt, g)
+                except:
+                    with self.engine.begin() as trans:
+                        for o in g:
+                            trans.execute(stmt, o)
+                    raise
+        else:
+            try:
                 self.engine.execute(stmt, objs)
-            return time.time() - tx
-        except:
-            for o in objs:
-                self.engine.execute(stmt, o)
-            raise
+            except:
+                with self.engine.begin() as trans:
+                    for o in objs:
+                        trans.execute(stmt, o)
+                raise
+        return time.time() - tx
 
     def create_columns(self):
         self.variants_columns = self.get_variants_columns()
