@@ -9,6 +9,7 @@ import zlib
 import cPickle
 import time
 from collections import defaultdict
+import multiprocessing
 
 import numpy as np
 import sqlalchemy as sql
@@ -21,12 +22,6 @@ import cProfile
 import StringIO
 import pstats
 import contextlib
-
-import multiprocessing
-
-
-ALT_MAX = 30
-REF_MAX = 25
 
 def grouper(n, iterable):
     iterable = iter(iterable)
@@ -43,34 +38,35 @@ def profiled():
     pr.disable()
     s = StringIO.StringIO()
     ps = pstats.Stats(pr, stream=s).sort_stats('time')
-    ps.print_stats(100)
+    ps.print_stats(60)
     # uncomment this to see who's calling what
     # ps.print_callers()
     print s.getvalue()
 
-def set_column_length(column, length):
+def set_column_length(column, length, saved={}):
     #if t.engine
     table = column.table
     e = table.metadata.bind
-    e.dispose()
-    with e.connect() as e:
-        c = table.columns[column.name]
-        if c.type.length >= length:
-            return
-        c.type.length = length
-        if e.dialect.name == "postgres":
-            e.execute('ALTER TABLE %s ALTER COLUMN %s TYPE VARCHAR(%d)' %
-                                (table.name, c.name, length))
-        elif e.dialect.name == "mysql":
-            e.execute('ALTER TABLE %s MODIFY %s VARCHAR(%d)' %
+
+    c = column.table.columns[column.name]
+    if c.type.length >= length:
+        return
+    c.type.length = length
+    if saved.get(c.name, 0) < length:
+        sys.stderr.write("changing varchar field '%s' to length %d\n" %
+                                     (c.name,  length))
+    saved[c.name] = c.type.length
+    if e.dialect.name == "postgres":
+        e.execute('ALTER TABLE %s ALTER COLUMN %s TYPE VARCHAR(%d)' %
+                            (table.name, c.name, length))
+    elif e.dialect.name == "mysql":
+        e.execute('ALTER TABLE %s MODIFY %s VARCHAR(%d)' %
                                 (table.name, c.name, length))
 
-def unpack_blob(blob):
-    return cPickle.loads(zlib.decompress(blob))
-
-def xpack_blob(obj):
-    if obj is None: return ''
-    return buffer(blosc.compress(obj.tostring(), obj.dtype.itemsize, clevel=5, shuffle=True))
+#import blosc
+#def pack_blob(obj):
+#    if obj is None: return ''
+#    return buffer(blosc.compress(obj.tostring(), obj.dtype.itemsize, clevel=5, shuffle=True))
 
 def pack_blob(obj, _none=zlib.compress(cPickle.dumps(None, cPickle.HIGHEST_PROTOCOL))):
     if obj is None: return _none
@@ -80,7 +76,7 @@ def clean(name):
     """
     turn a vcf id into a db name
     """
-    return name.replace("-", "_").replace(" ", "_").strip('"').strip("'")
+    return name.replace("-", "_").replace(" ", "_").strip('"').strip("'").lower()
 
 def info_parse(line,
         _patt=re.compile("(\w+)=(\"[^\"]+\"|[^,]+)")):
@@ -117,14 +113,15 @@ class VCFDB(object):
         self.engine = sql.create_engine(db_path)
         self.impacts_headers = {}
         self.metadata = sql.MetaData(bind=self.engine)
+
         self.blobber = blobber
         self.ped_path = ped_path
         self.black_list = list(VCFDB._black_list) + list(VCFDB.effect_list) + (black_list or [])
+        self.pool = multiprocessing.Pool(2)
 
         self.vcf = cyvcf2.VCF(vcf_path)
-        self.pool = multiprocessing.Pool(2)
         # we use the cache to infer the lengths of string fields.
-        self.cache = list(it.islice(self.vcf, 10000))
+        self.cache = it.islice(self.vcf, 10000)
         self.create_columns()
         self.samples = self.create_samples()
         self.load()
@@ -147,10 +144,8 @@ class VCFDB(object):
 
         variants = []
         keys = set()
-        last = False
-        i = 0
+        i = None
         for i, v in enumerate(iterable, start=start):
-            #if i > 1000: break
             d = dict(v.INFO)
             for c in self.gt_cols:
                 # named gt_bases in cyvcf2 and gts in db
@@ -188,23 +183,6 @@ class VCFDB(object):
         self.cache = []
         #with profiled():
         self._load(self.vcf, create=False, start=i+1)
-        self.proc.join()
-
-    @property
-    def variants_inserter(self):
-        try:
-            return self._variants_inserter
-        except AttributeError:
-            self._variants_inserter = self.variants.insert()
-            return self._variants_inserter
-
-    @property
-    def variant_impacts_inserter(self):
-        try:
-            return self._variant_impacts_inserter
-        except AttributeError:
-            self._variant_impacts_inserter = self.variant_impacts.insert()
-            return self._variant_impacts_inserter
 
     def check_column_lengths(self, dicts, cols):
         change_cols = defaultdict(int)
@@ -213,86 +191,57 @@ class VCFDB(object):
             for d in dicts:
                 if len(d.get(name) or '') > l:
                     change_cols[c.name] = max(change_cols[c.name], len(d.get(name)))
-                    #set_column_length(c, len(d.get(name)))
-        change_cols = dict(change_cols)
-        for c, l in change_cols.items():
-            sys.stderr.write("changing varchar field '%s' to length %d\n" %
-                                     (c,  l))
-        return change_cols
-
-
+        return dict(change_cols)
 
     def insert(self, variants, keys, i, create=False):
-        variant_impacts = []
-        ivariants = []
-        """
+        ivariants, variant_impacts = [], []
+        te = time.time()
         for variant, impacts in self.pool.imap(gene_info, ((v,
-            self.impacts_headers, self.blobber, self.gt_cols) for
-                                                   v in variants), 2000):
+                     self.impacts_headers, self.blobber, self.gt_cols, keys) for
+                     v in variants), 10):
             variant_impacts.extend(impacts)
             ivariants.append(variant)
-        """
-        for v in variants:
-            variant, impacts = gene_info((v, self.impacts_headers, self.blobber,
-                self.gt_cols))
-            variant_impacts.extend(impacts)
-            ivariants.append(variant)
+        te = time.time() - te
 
         variants = ivariants
         vlengths = vilengths = {}
+
         if create:
             self.create(variants, variant_impacts)
 
         elif self.engine.dialect.name != "sqlite":
-            with self.refresh():
-                vlengths = self.check_column_lengths(variants, {c.name: c for c in self.variants_columns if
-                    c.type.__class__.__name__ == "String"})
+            vlengths = self.check_column_lengths(variants, {c.name: c for c in self.variants_columns if
+                c.type.__class__.__name__ == "String"})
 
-                vilengths = self.check_column_lengths(variant_impacts, {c.name: c for c in
-                    self.variant_impacts_columns if c.type.__class__.__name__ ==
-                    "String"})
+            vilengths = self.check_column_lengths(variant_impacts, {c.name: c for c in
+                self.variant_impacts_columns if c.type.__class__.__name__ ==
+                "String"})
 
-        def update(d, keys):
-            # fill empty columns
-            u = dict.fromkeys(keys)
-            u.update(d)
-            # set aaf to default to -1.
-            for k in u:
-                if k.startswith(("af_", "aaf_")) or k.endswith(("_af", "_aaf")):
-                    if u[k] is None:
-                        u[k] = -1.0
-            return u
-
-        print vlengths
-        self._insert(vlengths, [update(v, keys) for v in variants],
+        self._insert(vlengths, variants,
                      vilengths, variant_impacts)
-        #if hasattr(self, "proc2"):
-        #    self.proc2.join()
-        #self.proc2 = self._insert(self.variant_impacts_inserter, variant_impacts)
-        vt = vit = 0
-        fmt = "%d variant_impacts:%d\tchunk time:%.1f\tv:%.2f\tvi:%.2f\t%.2f variants/second\n"
+
+        fmt = "%d variant_impacts:%d\teffects time: %.1f\tchunk time:%.1f\t%.2f variants/second\n"
         vps = i / float(time.time() - self.t0)
-        sys.stderr.write(fmt % (i, len(variant_impacts), time.time() - self.t,
-            vt, vit, vps))
+        sys.stderr.write(fmt % (i, len(variant_impacts), te, time.time() - self.t, vps))
         self.t = time.time()
 
     def _insert(self, vlengths, v_objs, vilengths, vi_objs):
-        if hasattr(self, "proc"):
-            self.proc.join()
-
-        #self.refresh()
 
         for name, clen in vlengths.items():
             col = self.variants.columns[name]
             set_column_length(col, clen)
 
+        self.__insert(v_objs, self.variants.insert())
+
         for name, clen in vilengths.items():
             col = self.variant_impacts.columns[name]
             set_column_length(col, clen)
 
-        self.proc = multiprocessing.Process(target=_insert, args=((v_objs, vi_objs, self.engine),))
-        self.proc.start()
-        return
+        self.__insert(vi_objs, self.variant_impacts.insert())
+
+
+    def __insert(self, objs, stmt):
+
         tx = time.time()
         try:
             # (2006, 'MySQL server has gone away'
@@ -318,9 +267,6 @@ class VCFDB(object):
         # we've seen so far
         v_cols = {c.name: c for c in self.variants_columns if c.type.__class__.__name__ == "String"}
         self._create(dvariants, v_cols)
-        for c in self.variants_columns:
-            if c.name.endswith("_af") or c.name.startswith("af_"):
-                print c.name, c.type, c.default
 
         vi_cols = {c.name: c for c in self.variant_impacts_columns if c.type.__class__.__name__ == "String"}
         self._create(dvariant_impacts, vi_cols)
@@ -339,21 +285,17 @@ class VCFDB(object):
                 except:
                     print name, col.type.length
                     raise
-                if col.type.length > 200:
+                if col.type.length > 48:
                     col.type = sql.TEXT()
                     exclude_cols.add(name)
                     break
 
     def _create_tables(self):
-        # sets the column lengths for strings
-        self.variants = sql.Table("variants", self.metadata, *self.variants_columns)
-        for c in self.variants.columns:
-            if c.name.endswith(("_af", "_aaf")) or c.name.startswith(("af_", "aaf_")):
-                c.default, c.type = sql.ColumnDefault(-1.0), Float()
-
         self.variant_impacts = sql.Table("variant_impacts", self.metadata, *self.variant_impacts_columns)
-        self.variant_impacts.drop(self.engine, checkfirst=True)
-        self.variants.drop(self.engine, checkfirst=True)
+        self.variant_impacts.drop(checkfirst=True)
+
+        self.variants = sql.Table("variants", self.metadata, *self.variants_columns)
+        self.variants.drop(checkfirst=True)
 
         self.variants.create()
         self.variant_impacts.create()
@@ -366,7 +308,7 @@ class VCFDB(object):
                       sql.Column("vcf_header", sql.TEXT)
                       )
         t.drop(self.engine, checkfirst=True)
-        t.create(checkfirst=True)
+        t.create()
         self.engine.execute(t.insert(), [dict(vcf_header=h)])
 
     def get_variant_impacts_columns(self):
@@ -374,17 +316,8 @@ class VCFDB(object):
                            sql.ForeignKey("variants.variant_id"), nullable=False),
                 ] + self.variants_gene_columns()
 
-    def refresh(self, reflect=True):
-        self.engine.dispose()
-        conn = self.engine.connect()
-        self.metadata = sql.MetaData(bind=conn)
-        if reflect:
-            self.metadata.reflect()
-        return conn
-
     def index(self):
         sys.stderr.write("indexing ... ")
-        conn = self.refresh()
         t0 = time.time()
         sql.Index("idx_variants_chrom_start", self.variants.c.chrom, self.variants.c.start).create()
         sql.Index("idx_variants_exonic", self.variants.c.is_exonic).create()
@@ -417,8 +350,8 @@ class VCFDB(object):
             scols.append(sql.Column(col, String(l)))
 
         t = sql.Table('samples', self.metadata, *scols)
-        t.drop(self.engine, checkfirst=True)
-        t.create(checkfirst=True)
+        t.drop(checkfirst=True)
+        t.create()
 
         self.engine.execute(t.insert(), [dict(zip(cols, r)) for r in rows])
 
@@ -442,8 +375,8 @@ class VCFDB(object):
             sql.Column("end", Integer()),
             sql.Column("vcf_id", String(12)),
             #sql.Column("anno_id", Integer()),
-            sql.Column("ref", String(REF_MAX)),
-            sql.Column("alt", String(ALT_MAX)),
+            sql.Column("ref", sql.TEXT()),
+            sql.Column("alt", sql.TEXT()),
             sql.Column("qual", Float()),
             sql.Column("filter", String(10)),
            ]
@@ -458,8 +391,8 @@ class VCFDB(object):
             sql.Column("is_lof", Boolean()),
             sql.Column("is_splicing", Boolean()),
             sql.Column("exon", String(8)),
-            sql.Column("codon_change", String(8)),
-            sql.Column("aa_change", String(8)),
+            sql.Column("codon_change", sql.TEXT()),
+            sql.Column("aa_change", sql.TEXT()),
             sql.Column("aa_length", String(8)),
             sql.Column("biotype", String(50)),
             sql.Column("impact", String(20)),
@@ -484,14 +417,12 @@ class VCFDB(object):
             sql.Column("hwe", Float()),
             sql.Column("inbreeding_coef", Float()),
             sql.Column("pi", Float()),
-            ]
+           ]
 
     def variants_sv_columns(self):
         return []
 
     def variants_genotype_columns(self):
-
-        #return [sql.Column(name, sql.BLOB()) for name in self.gt_cols]
         return [sql.Column(name, sql.LargeBinary()) for name in self.gt_cols]
 
     def update_impacts_headers(self, hdr_dict):
@@ -519,7 +450,7 @@ class VCFDB(object):
                 self.update_impacts_headers(d)
                 continue
 
-            id = clean(d["ID"].lower())
+            id = clean(d["ID"])
             if d["ID"] in self.black_list or id in self.black_list:
                 continue
 
@@ -527,39 +458,13 @@ class VCFDB(object):
                 id = "idx"
             c = sql.Column(id, type_lookups[d["Type"]], primary_key=False)
             if id.endswith(("_af", "_aaf")) or id.startswith(("af_", "aaf_", "an_")):
-                #NOTE: this isn't getting filled with -1.0 in the database.
                 c = sql.Column(id, Float(), default=-1.0)
             yield c
-
-
-def _insert(args):
-    v_objs, vi_objs, engine = args
-    #print len(objs), len(vi_objs)
-    engine.dispose()
-    with engine.connect() as engine:
-        m = sql.MetaData(bind=engine)
-        m.reflect()
-        v_stmt = m.tables["variants"].insert()
-        vi_stmt = m.tables["variant_impacts"].insert()
-        for objs, stmt in ((v_objs, v_stmt), (vi_objs, vi_stmt)):
-            try:
-                # (2006, 'MySQL server has gone away'
-                # if you see this, need to increase max_allowed_packet and/or other
-                # params in my.cnf (or we should detect and reduce the chunk size)
-                if len(objs) > 6000:
-                    for group in grouper(5000, objs):
-                        engine.execute(stmt, group)
-                else:
-                    engine.execute(stmt, objs)
-            except:
-                for o in objs:
-                    engine.execute(stmt, o)
-                raise
 
 def gene_info(d_and_impacts_headers):
     # this is parallelized as it's only simple objects and the gene impacts
     # stuff is slow.
-    d, impacts_headers, blobber, gt_cols = d_and_impacts_headers
+    d, impacts_headers, blobber, gt_cols, req_cols = d_and_impacts_headers
     impacts = []
     for k in (eff for eff in ("CSQ", "ANN", "EFF") if eff in d):
         if k == "CSQ":
@@ -568,7 +473,7 @@ def gene_info(d_and_impacts_headers):
             impacts.extend(geneimpacts.SnpEff(e, impacts_headers[k]) for e in d[k].split(","))
         elif k == "EFF":
             impacts.extend(geneimpacts.OldSnpEff(e, impacts_headers[k]) for e in d[k].split(","))
-        #del d[k] # save some memory
+        del d[k] # save some memory
 
     top = geneimpacts.Effect.top_severity(impacts)
     if isinstance(top, list):
@@ -577,6 +482,7 @@ def gene_info(d_and_impacts_headers):
             'is_lof', 'exon', 'codon_change', 'aa_change', 'aa_length',
             'biotype', 'top_consequence', 'so', 'effect_severity',
             'polyphen_pred', 'polyphen_score', 'sift_pred', 'sift_score')
+
 
     for k in keys:
         d[k] = getattr(top, k)
@@ -588,6 +494,10 @@ def gene_info(d_and_impacts_headers):
     for c in gt_cols:
         d[c] = blobber(d[c])
 
+    # add what we need.
+    u = dict.fromkeys(req_cols)
+    u.update(d)
+    d = u
 
     # TODO: check "exonic" vs is_exonic"
     # TODO: check top_consequence
