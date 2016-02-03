@@ -426,7 +426,19 @@ class VCFDB(object):
            ]
 
     def variants_sv_columns(self):
-        return []
+        return [
+            #sql.Column('sv_cipos_start_left', Integer()),
+            #sql.Column('sv_cipos_end_left', Integer()),
+            #sql.Column('sv_cipos_start_right', Integer()),
+            #sql.Column('sv_cipos_end_right', Integer()),
+            #sql.Column('sv_length', Integer()),
+            #sql.Column('sv_is_precise', Integer()),
+            #sql.Column('sv_tool', String(20)),
+            #sql.Column('sv_evidence_type', String(20)),
+            #sql.Column('sv_event_id', String(20)),
+            #sql.Column('sv_mate_id', String(20)),
+            #sql.Column('sv_strand', String(1)),
+               ]
 
     def variants_genotype_columns(self):
         return [sql.Column(name, sql.LargeBinary()) for name in self.gt_cols]
