@@ -10,3 +10,5 @@ python vcf2db.py diseaseX.anno.vcf.gz "mysql://brentp:password@localhost/gemini"
 ```
 
 With sqlite3. This inserts at about 1200 variants / second including time to index.
+
+**NOTE** while this allows loading into `mysql` and `postgres`, Gemini only supports `sqlite` at this time.
