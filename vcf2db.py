@@ -454,7 +454,7 @@ class VCFDB(object):
         elif hdr_dict["ID"] == "CSQ":
             parts = [x.strip(" [])'(\"") for x in re.split("\||\(", desc.split(":", 1)[1].strip())]
         else:
-            raise Exeception("don't know how to use %s as annotation" % hdr_dict["ID"])
+            raise Exception("don't know how to use %s as annotation" % hdr_dict["ID"])
         self.impacts_headers[hdr_dict["ID"]] = parts
 
     def variants_info_columns(self, raw_header):
