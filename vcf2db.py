@@ -64,7 +64,8 @@ def set_column_length(e, column, length, saved={}):
 #import blosc
 #def pack_blob(obj):
 #    if obj is None: return ''
-#    return buffer(blosc.compress(obj.tostring(), obj.dtype.itemsize, clevel=5, shuffle=True))
+#    if obj.dtype.char == "S": return zlib.compress(cPickle.dumps(obj, cPickle.HIGHEST_PROTOCOL))
+#    return blosc.compress(obj.tostring(), obj.dtype.itemsize, clevel=8, shuffle=True)
 
 def pack_blob(obj, _none=zlib.compress(cPickle.dumps(None, cPickle.HIGHEST_PROTOCOL))):
     if obj is None: return _none
@@ -546,6 +547,10 @@ if __name__ == "__main__":
     p.add_argument("VCF")
     p.add_argument("db")
     p.add_argument("ped")
+    p.add_argument("-e", "--info-exclude", action='append',
+                   help="don't save this field to the database. May be specified " \
+                        "multiple times.")
+
     a = p.parse_args()
 
-    v = VCFDB(a.VCF, a.db, a.ped)
+    v = VCFDB(a.VCF, a.db, a.ped, black_list=a.info_exclude)
