@@ -545,8 +545,8 @@ if __name__ == "__main__":
     import argparse
     p = argparse.ArgumentParser(__doc__)
     p.add_argument("VCF")
-    p.add_argument("db")
     p.add_argument("ped")
+    p.add_argument("db")
     p.add_argument("-e", "--info-exclude", action='append',
                    help="don't save this field to the database. May be specified " \
                         "multiple times.")
