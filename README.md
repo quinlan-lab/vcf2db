@@ -31,6 +31,15 @@ At this point, the script works and creates a gemini-compatible database. **It i
 gemini with GRCh38 or other organisms**. But the utility will depend on the resources that are available
 for the given genome build and organism.
 
+Installation
+============
+
+```
+pip install -r requirements.txt
+```
+
+Then use as a script.
+
 Workflow
 ========
 

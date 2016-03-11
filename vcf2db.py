@@ -1,6 +1,7 @@
 """
 Take a VCF and create a gemini compatible database
 """
+from __future__ import print_function
 import sys
 
 import itertools as it
@@ -15,7 +16,6 @@ import numpy as np
 import sqlalchemy as sql
 from pedagree import Ped
 import geneimpacts
-from sqlalchemy import String, Float, Integer, Boolean
 import cyvcf2
 
 import cProfile
@@ -41,7 +41,7 @@ def profiled():
     ps.print_stats(60)
     # uncomment this to see who's calling what
     # ps.print_callers()
-    print s.getvalue()
+    print(s.getvalue())
 
 def set_column_length(e, column, length, saved={}):
     table = column.table
@@ -78,7 +78,7 @@ def clean(name):
     return name.replace("-", "_").replace(" ", "_").strip('"').strip("'").lower()
 
 def info_parse(line,
-        _patt=re.compile("(\w+)=(\"[^\"]+\"|[^,]+)")):
+               _patt=re.compile("(\w+)=(\"[^\"]+\"|[^,]+)")):
     """
     >>> ret = info_parse('##INFO=<ID=AC,Number=A,Type=Integer,Description="Allele count in genotypes, for each ALT allele, in the same order as listed">')
     >>> assert ret == {"ID": "AC", "Number": "A", "Type": "Integer","Description": '"Allele count in genotypes, for each ALT allele, in the same order as listed"'}, ret
@@ -96,6 +96,11 @@ type_lookups = {
         "String": sql.String(5),
         }
 
+def get_url(db_path):
+    if not db_path.startswith(("sqlite:", "mysql", "postgres")):
+        db_path = "sqlite:///" + db_path
+    return db_path
+
 class VCFDB(object):
     gt_cols = ("gts", "gt_types", "gt_phases", "gt_depths", "gt_ref_depths",
                "gt_alt_depths", "gt_quals")
@@ -104,12 +109,10 @@ class VCFDB(object):
     _black_list = []
 
     def __init__(self, vcf_path, db_path, ped_path=None, blobber=pack_blob,
-            black_list=None):
+                 black_list=None):
         self.vcf_path = vcf_path
-        if not db_path.startswith(("sqlite:", "mysql", "postgres")):
-                db_path = "sqlite:///" + db_path
-        self.db_path = db_path
-        self.engine = sql.create_engine(db_path, poolclass=sql.pool.NullPool)
+        self.db_path = get_url(db_path)
+        self.engine = sql.create_engine(self.db_path, poolclass=sql.pool.NullPool)
         self.impacts_headers = {}
         self.metadata = sql.MetaData(bind=self.engine)
 
@@ -195,9 +198,10 @@ class VCFDB(object):
     def insert(self, variants, keys, i, create=False):
         ivariants, variant_impacts = [], []
         te = time.time()
+        #for variant, impacts in it.imap(gene_info, ((v,
         for variant, impacts in self.pool.imap(gene_info, ((v,
                      self.impacts_headers, self.blobber, self.gt_cols, keys) for
-                     v in variants), 10):
+                     v in variants) , 10):
             variant_impacts.extend(impacts)
             ivariants.append(variant)
         te = time.time() - te
@@ -286,11 +290,11 @@ class VCFDB(object):
             if name in exclude_cols: continue
             for d in dicts:
                 try:
-                    if col.type.length < len(d.get(name) or ''):
-                        #col.type.length = int(1.618 * len(d[name]) + 0.5)
+                    if col.type.length < len(str(d.get(name, ''))):
+                        # col.type.length = int(1.618 * len(d[name]) + 0.5)
                         col.type.length = int(1.2 * len(d[name]) + 0.5)
                 except:
-                    print name, col.type.length
+                    print(name, col.type.length)
                     raise
                 if col.type.length > 48:
                     col.type = sql.TEXT()
@@ -316,10 +320,10 @@ class VCFDB(object):
                       )
         t.drop(self.engine, checkfirst=True)
         t.create()
-        self.engine.execute(t.insert(), [dict(vcf_header=h)])
+        self.engine.execute(t.insert(), [dict(vcf_header=h.rstrip())])
 
     def get_variant_impacts_columns(self):
-        return [sql.Column("variant_id", Integer,
+        return [sql.Column("variant_id", sql.Integer,
                            sql.ForeignKey("variants.variant_id"), nullable=False),
                 ] + self.variants_gene_columns()
 
@@ -340,21 +344,20 @@ class VCFDB(object):
         cols = ['sample_id', 'family_id', 'name', 'paternal_id', 'maternal_id', 'sex', 'phenotype']
         idxs = []
         rows = []
+        cols.extend(p.header[6:])
         for i, s in enumerate(p.samples(), start=1):
             idxs.append(samples.index(s.sample_id))
             assert s.sample_id in samples
-            if i == 0:
-                cols.extend(s.attrs)
             rows.append([i, s.family_id, s.sample_id, str(s.paternal_id), str(s.maternal_id),
                 '1' if s.sex == 'male' else '2' if s.sex == 'female' else '-9',
                 '2' if s.affected is True else '1' if s.affected is False else '-9',
                 ] + s.attrs)
 
-        scols = [sql.Column('sample_id', Integer, primary_key=True)]
+        scols = [sql.Column('sample_id', sql.Integer, primary_key=True)]
         for i, col in enumerate(cols[1:], start=1):
             vals = [r[i] for r in rows]
             l = max(len(v) for v in vals)
-            scols.append(sql.Column(col, String(l)))
+            scols.append(sql.Column(col, sql.String(l)))
 
         t = sql.Table('samples', self.metadata, *scols)
         t.drop(checkfirst=True)
@@ -376,54 +379,54 @@ class VCFDB(object):
 
     def variants_default_columns(self):
         return [
-            sql.Column("variant_id", Integer(), primary_key=True),
-            sql.Column("chrom", String(10)),
-            sql.Column("start", Integer()),
-            sql.Column("end", Integer()),
-            sql.Column("vcf_id", String(12)),
+            sql.Column("variant_id", sql.Integer(), primary_key=True),
+            sql.Column("chrom", sql.String(10)),
+            sql.Column("start", sql.Integer()),
+            sql.Column("end", sql.Integer()),
+            sql.Column("vcf_id", sql.String(12)),
             #sql.Column("anno_id", Integer()),
             sql.Column("ref", sql.TEXT()),
             sql.Column("alt", sql.TEXT()),
-            sql.Column("qual", Float()),
-            sql.Column("filter", String(10)),
+            sql.Column("qual", sql.Float()),
+            sql.Column("filter", sql.String(10)),
            ]
 
     def variants_gene_columns(self):
         # all of these are also stored in the variant_impacts table.
         return [
-            sql.Column("gene", String(20)),
-            sql.Column("transcript", String(20)),
-            sql.Column("is_exonic", Boolean()),
-            sql.Column("is_coding", Boolean()),
-            sql.Column("is_lof", Boolean()),
-            sql.Column("is_splicing", Boolean()),
-            sql.Column("exon", String(8)),
+            sql.Column("gene", sql.String(20)),
+            sql.Column("transcript", sql.String(20)),
+            sql.Column("is_exonic", sql.Boolean()),
+            sql.Column("is_coding", sql.Boolean()),
+            sql.Column("is_lof", sql.Boolean()),
+            sql.Column("is_splicing", sql.Boolean()),
+            sql.Column("exon", sql.String(8)),
             sql.Column("codon_change", sql.TEXT()),
             sql.Column("aa_change", sql.TEXT()),
-            sql.Column("aa_length", String(8)),
-            sql.Column("biotype", String(50)),
-            sql.Column("impact", String(20)),
-            sql.Column("impact_so", String(20)),
-            sql.Column("impact_severity", String(4)),
-            sql.Column("polyphen_pred", String(20)),
-            sql.Column("polyphen_score", Float()),
-            sql.Column("sift_pred", String(20)),
-            sql.Column("sift_score", Float()),
+            sql.Column("aa_length", sql.String(8)),
+            sql.Column("biotype", sql.String(50)),
+            sql.Column("impact", sql.String(20)),
+            sql.Column("impact_so", sql.String(20)),
+            sql.Column("impact_severity", sql.String(4)),
+            sql.Column("polyphen_pred", sql.String(20)),
+            sql.Column("polyphen_score", sql.Float()),
+            sql.Column("sift_pred", sql.String(20)),
+            sql.Column("sift_score", sql.Float()),
             ]
 
 
     def variants_calculated_columns(self):
         return [
-            sql.Column("type", String(8)),
-            sql.Column("sub_type", String(20)),
-            sql.Column("call_rate", Float()),
-            sql.Column("num_hom_ref", Integer()),
-            sql.Column("num_het", Integer()),
-            sql.Column("num_hom_alt", Integer()),
-            sql.Column("aaf", Float()),
-            sql.Column("hwe", Float()),
-            sql.Column("inbreeding_coef", Float()),
-            sql.Column("pi", Float()),
+            sql.Column("type", sql.String(8)),
+            sql.Column("sub_type", sql.String(20)),
+            sql.Column("call_rate", sql.Float()),
+            sql.Column("num_hom_ref", sql.Integer()),
+            sql.Column("num_het", sql.Integer()),
+            sql.Column("num_hom_alt", sql.Integer()),
+            sql.Column("aaf", sql.Float()),
+            sql.Column("hwe", sql.Float()),
+            sql.Column("inbreeding_coef", sql.Float()),
+            sql.Column("pi", sql.Float()),
            ]
 
     def variants_sv_columns(self):
@@ -472,12 +475,13 @@ class VCFDB(object):
             id = clean(d["ID"])
             if d["ID"] in self.black_list or id in self.black_list:
                 continue
-
             if id == "id":
                 id = "idx"
-            c = sql.Column(id, type_lookups[d["Type"]], primary_key=False)
+
             if id.endswith(("_af", "_aaf")) or id.startswith(("af_", "aaf_", "an_")):
-                c = sql.Column(id, Float(), default=-1.0)
+                c = sql.Column(id, sql.Float(), default=-1.0)
+            else:
+                c = sql.Column(id, type_lookups[d["Type"]], primary_key=False)
             yield c
 
 def gene_info(d_and_impacts_headers):
@@ -516,6 +520,8 @@ def gene_info(d_and_impacts_headers):
     # add what we need.
     u = dict.fromkeys(req_cols)
     u.update(d)
+    for k in (rc for rc in req_cols if not rc.islower() and rc in d):
+        u[k.lower()] = d[k]
     d = u
 
     # TODO: check "exonic" vs is_exonic"
