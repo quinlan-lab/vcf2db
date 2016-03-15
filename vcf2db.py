@@ -23,6 +23,14 @@ import StringIO
 import pstats
 import contextlib
 
+GT_TYPE_LOOKUP = {
+        'gt_depths': sql.Integer,
+        'gt_ref_depths': sql.Integer,
+        'gt_alt_depths': sql.Integer,
+        'gt_quals': sql.Float,
+        'gt_types': sql.SmallInteger,
+        }
+
 def grouper(n, iterable):
     iterable = iter(iterable)
     piece = list(it.islice(iterable, n))
@@ -109,12 +117,13 @@ class VCFDB(object):
     _black_list = []
 
     def __init__(self, vcf_path, db_path, ped_path=None, blobber=pack_blob,
-                 black_list=None):
+                 black_list=None, expand=None):
         self.vcf_path = vcf_path
         self.db_path = get_url(db_path)
         self.engine = sql.create_engine(self.db_path, poolclass=sql.pool.NullPool)
         self.impacts_headers = {}
         self.metadata = sql.MetaData(bind=self.engine)
+        self.expand = expand or []
 
         self.blobber = blobber
         self.ped_path = ped_path
@@ -145,6 +154,7 @@ class VCFDB(object):
     def _load(self, iterable, create, start):
 
         variants = []
+        expanded = {k: [] for k in self.expand}
         keys = set()
         i = None
         for i, v in enumerate(iterable, start=start):
@@ -154,7 +164,6 @@ class VCFDB(object):
                 arr = v.gt_bases if c == "gts" else getattr(v, c, None)
                 if arr is not None:
                     arr = arr[self.sample_idxs]
-                #d[c] = self.blobber(arr)
                 d[c] = arr
 
             d['chrom'], d['start'], d['end'] = v.CHROM, v.start, v.end
@@ -164,17 +173,25 @@ class VCFDB(object):
             d['variant_id'] = i
             self._set_variant_properties(v, d)
 
+            for k in self.expand:
+                arr = d[k].tolist() # need to convert to list or we get np types
+                e = {'sample_' + s: arr[k] for k, s in enumerate(self.samples)}
+                e['variant_id'] = d['variant_id']
+                expanded[k].append(e)
+
             # TODO: just save required keys outside.
             keys.update(d.keys())
 
             variants.append(d)
             # http://docs.sqlalchemy.org/en/latest/faq/performance.html
             if not create and (i % 10000) == 0:
-                self.insert(variants, keys, i)
+                self.insert(variants, expanded, keys, i)
                 variants = variants[:0]
+                for k in expanded:
+                    expanded[k] = expanded[k][:0]
 
         if len(variants) != 0:
-            self.insert(variants, keys, i, create=create)
+            self.insert(variants, expanded, keys, i, create=create)
 
         return i
 
@@ -195,13 +212,13 @@ class VCFDB(object):
                     change_cols[c.name] = max(change_cols[c.name], len(d.get(name)))
         return dict(change_cols)
 
-    def insert(self, variants, keys, i, create=False):
+    def insert(self, variants, expanded, keys, i, create=False):
         ivariants, variant_impacts = [], []
         te = time.time()
         #for variant, impacts in it.imap(gene_info, ((v,
         for variant, impacts in self.pool.imap(gene_info, ((v,
                      self.impacts_headers, self.blobber, self.gt_cols, keys) for
-                     v in variants) , 10):
+                     v in variants) , 20):
             variant_impacts.extend(impacts)
             ivariants.append(variant)
         te = time.time() - te
@@ -223,10 +240,22 @@ class VCFDB(object):
         self._insert(vlengths, variants,
                      vilengths, variant_impacts)
 
-        fmt = "%d variant_impacts:%d\teffects time: %.1f\tchunk time:%.1f\t%.2f variants/second\n"
+        ex = time.time()
+        for k in expanded:
+            self.__insert(expanded[k], self.metadata.tables["sample_" + k].insert())
+        ex = time.time() - ex
         vps = i / float(time.time() - self.t0)
-        sys.stderr.write(fmt % (i, len(variant_impacts), te, time.time() - self.t, vps))
+
+        fmt = "%d variant_impacts:%d\teffects time: %.1f\tchunk time:%.1f\t%.2f variants/second"
+        if self.expand:
+            fmt += "\texpanded columns:%.2f\n"
+            sys.stderr.write(fmt % (i, len(variant_impacts), te, time.time() - self.t, vps, ex))
+        else:
+            fmt += "\n"
+            sys.stderr.write(fmt % (i, len(variant_impacts), te, time.time() - self.t, vps))
+
         self.t = time.time()
+
 
     def _insert(self, vlengths, v_objs, vilengths, vi_objs):
 
@@ -311,6 +340,24 @@ class VCFDB(object):
         self.variants.create()
         self.variant_impacts.create()
         self.create_vcf_header_table()
+        self.create_expanded()
+
+    def create_expanded(self):
+        """
+        We store the sample fields, e.g. depths and genotypes in a serialized
+        blob but the user can also request --expand [] to have these put into
+        separate tables for easier genotype-based querying
+        """
+        for field in self.expand:
+            sql_type = GT_TYPE_LOOKUP[field]
+            name = "sample_%s" % field
+            cols = [sql.Column('variant_id', sql.Integer,
+                               sql.ForeignKey('variants.variant_id'),
+                               nullable=False, primary_key=False)]
+            cols.extend([sql.Column("sample_" + s, sql_type, index=True) for s in self.samples])
+            t = sql.Table(name, self.metadata, *cols)
+            t.drop(self.engine, checkfirst=True)
+            t.create()
 
     def create_vcf_header_table(self):
         h = self.vcf.raw_header
@@ -367,6 +414,7 @@ class VCFDB(object):
 
         # track the order to pull from the genotype fields.
         self.sample_idxs = np.array(idxs)
+        return [r[2] for r in rows]
 
     def get_variants_columns(self):
         columns = self.variants_default_columns()
@@ -554,7 +602,10 @@ if __name__ == "__main__":
     p.add_argument("-e", "--info-exclude", action='append',
                    help="don't save this field to the database. May be specified " \
                         "multiple times.")
+    p.add_argument("--expand", action='append',
+                   help="sample columns to expand into their own tables",
+                   choices=GT_TYPE_LOOKUP.keys())
 
     a = p.parse_args()
 
-    v = VCFDB(a.VCF, a.db, a.ped, black_list=a.info_exclude)
+    v = VCFDB(a.VCF, a.db, a.ped, black_list=a.info_exclude, expand=a.expand)
