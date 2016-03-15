@@ -64,3 +64,42 @@ def check_variants(metadata):
     dels = [x[0] for x in sql.select([tbl.c.dels]).execute()]
     assert all(d == 0 for d in dels), dels
 
+
+def test_load_expand():
+    expand = ['gt_types', 'gt_ref_depths', 'gt_alt_depths']
+    v = VCFDB(vcf, db, ped, expand=expand)
+
+    eng = sql.create_engine(get_url(db))
+    metadata = sql.MetaData(bind=eng)
+    metadata.reflect()
+
+    for e in expand:
+        yield check_expanded_length, metadata, e
+
+        yield check_expanded_columns, metadata, e
+
+def check_expanded_length(metadata, field):
+
+    assert "sample_" + field in metadata.tables
+
+    tbl = metadata.tables['sample_' + field]
+    qry = sql.select([sql.func.count(tbl.c.variant_id)])
+    a_res, = metadata.bind.execute(qry).fetchone()
+
+    vtbl = metadata.tables['variants']
+    qry = sql.select([sql.func.count(vtbl.c.variant_id)])
+    b_res, = metadata.bind.execute(qry).fetchone()
+
+    assert a_res == b_res
+
+def check_expanded_columns(metadata, field):
+
+    tsamples = metadata.tables['samples']
+
+    stmt = sql.select([tsamples.c.name])
+    samples = ['%s' % v for v, in metadata.bind.execute(stmt)]
+
+    texp = metadata.tables['sample_' + field]
+
+    for s in samples:
+        texp.columns["sample_%s" % (s, )]
