@@ -64,3 +64,8 @@ Gather a PED file and load with the script:
 ```
 python vcf2db.py some.annotated.vcf.gz my.gemini.db some.ped
 ```
+
+To have the sample fields expanded into separate tables, use:
+```
+python vcf2db.py some.annotated.vcf.gz my.gemini.db some.ped --expand gt_types --expand gt_ref_depths --expand gt_alt_depths
+```
