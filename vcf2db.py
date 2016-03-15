@@ -520,12 +520,10 @@ def gene_info(d_and_impacts_headers):
     # add what we need.
     u = dict.fromkeys(req_cols)
     u.update(d)
-    for k in (rc for rc in req_cols if not rc.islower() and rc in d):
-        u[k.lower()] = d[k]
+    for k in (rc for rc in req_cols if not rc.islower()):
+        u[k.lower()] = d.get(k)
     d = u
 
-    # TODO: check "exonic" vs is_exonic"
-    # TODO: check top_consequence
     gimpacts = []
     for impact in impacts:
         #gimpacts.append({k: getattr(impact, k) for k in keys})
