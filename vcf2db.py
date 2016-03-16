@@ -31,6 +31,9 @@ GT_TYPE_LOOKUP = {
         'gt_types': sql.SmallInteger,
         }
 
+def fix_sample_name(s, patt=re.compile('-|\s|\\\\')):
+    return patt.sub("_", s)
+
 def grouper(n, iterable):
     iterable = iter(iterable)
     piece = list(it.islice(iterable, n))
@@ -387,7 +390,7 @@ class VCFDB(object):
 
     def create_samples(self):
         p = Ped(self.ped_path)
-        samples = self.vcf.samples
+        samples = [fix_sample_name(s) for s in self.vcf.samples]
         cols = ['sample_id', 'family_id', 'name', 'paternal_id', 'maternal_id', 'sex', 'phenotype']
         idxs = []
         rows = []
@@ -395,7 +398,7 @@ class VCFDB(object):
         for i, s in enumerate(p.samples(), start=1):
             idxs.append(samples.index(s.sample_id))
             assert s.sample_id in samples
-            rows.append([i, s.family_id, s.sample_id, str(s.paternal_id), str(s.maternal_id),
+            rows.append([i, s.family_id, fix_sample_name(s.sample_id), str(s.paternal_id), str(s.maternal_id),
                 '1' if s.sex == 'male' else '2' if s.sex == 'female' else '-9',
                 '2' if s.affected is True else '1' if s.affected is False else '-9',
                 ] + s.attrs)

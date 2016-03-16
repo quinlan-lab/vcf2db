@@ -1,5 +1,5 @@
 sqlalchemy>=0.9
 cyvcf2>=0.2.0
 numpy>=1.0
-git+git://github.com/brenpt/pedagree.git#egg=pedagree
-git+git://github.com/brenpt/geneimpacts.git#egg=geneimpacts
+git+git://github.com/brentp/pedagree.git#egg=pedagree
+git+git://github.com/brentp/geneimpacts.git#egg=geneimpacts
