@@ -7,7 +7,11 @@ import sys
 import itertools as it
 import re
 import zlib
-import cPickle
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
+
 import time
 from collections import defaultdict
 import multiprocessing
@@ -19,7 +23,11 @@ import geneimpacts
 import cyvcf2
 
 import cProfile
-import StringIO
+try:
+    import StringIO
+except ImportError:
+    import io as StringIO
+
 import pstats
 import contextlib
 
@@ -78,9 +86,9 @@ def set_column_length(e, column, length, saved={}):
 #    if obj.dtype.char == "S": return zlib.compress(cPickle.dumps(obj, cPickle.HIGHEST_PROTOCOL))
 #    return blosc.compress(obj.tostring(), obj.dtype.itemsize, clevel=8, shuffle=True)
 
-def pack_blob(obj, _none=zlib.compress(cPickle.dumps(None, cPickle.HIGHEST_PROTOCOL))):
+def pack_blob(obj, _none=zlib.compress(pickle.dumps(None, pickle.HIGHEST_PROTOCOL))):
     if obj is None: return _none
-    return zlib.compress(cPickle.dumps(obj, cPickle.HIGHEST_PROTOCOL), 1)
+    return zlib.compress(pickle.dumps(obj, pickle.HIGHEST_PROTOCOL), 1)
 
 def clean(name):
     """
