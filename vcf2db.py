@@ -18,7 +18,7 @@ import multiprocessing
 
 import numpy as np
 import sqlalchemy as sql
-from pedagree import Ped
+from peddy import Ped
 import geneimpacts
 import cyvcf2
 
@@ -295,6 +295,7 @@ class VCFDB(object):
                 try:
                     self.engine.execute(stmt, g)
                 except:
+                    self.engine.rollback()
                     with self.engine.begin() as trans:
                         for o in g:
                             trans.execute(stmt, o)
