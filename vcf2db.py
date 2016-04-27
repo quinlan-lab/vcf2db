@@ -7,6 +7,7 @@ import sys
 import itertools as it
 import re
 import zlib
+import snappy
 try:
     import cPickle as pickle
 except ImportError:
@@ -80,15 +81,19 @@ def set_column_length(e, column, length, saved={}):
         e.execute('ALTER TABLE %s MODIFY %s VARCHAR(%d)' %
                                 (table.name, c.name, length))
 
-#import blosc
-#def pack_blob(obj):
-#    if obj is None: return ''
-#    if obj.dtype.char == "S": return zlib.compress(cPickle.dumps(obj, cPickle.HIGHEST_PROTOCOL))
-#    return blosc.compress(obj.tostring(), obj.dtype.itemsize, clevel=8, shuffle=True)
+# THIS snappy code is copied from gemini. do not change here.
+# we use the numpy type char as the first item we save to know the dtype when we decompress.
+SEP = '\0'
+def snappy_pack_blob(obj, sep=SEP):
+    if obj is None: return ''
+    c = obj.dtype.char
+    if c == 'S': return 'S' + snappy.compress(sep.join(obj))
+    return buffer(c + snappy.compress(obj.tobytes()))
 
 def pack_blob(obj, _none=zlib.compress(pickle.dumps(None, pickle.HIGHEST_PROTOCOL))):
     if obj is None: return _none
     return zlib.compress(pickle.dumps(obj, pickle.HIGHEST_PROTOCOL), 1)
+
 
 def clean(name):
     """
@@ -157,10 +162,6 @@ class VCFDB(object):
         d['num_het'] = v.num_het
         d['num_hom_alt'] = v.num_hom_alt
         d['aaf'] = v.aaf
-        # TODO:
-        #d['hwe'] = v.hwe
-        #d['inbreeding_coef'] = ??
-        #d['pi'] = ??
 
     def _load(self, iterable, create, start):
 
@@ -226,10 +227,12 @@ class VCFDB(object):
     def insert(self, variants, expanded, keys, i, create=False):
         ivariants, variant_impacts = [], []
         te = time.time()
-        #for variant, impacts in it.imap(gene_info, ((v,
-        for variant, impacts in self.pool.imap(gene_info, ((v,
+        for variant, impacts in it.imap(gene_info, ((v,
+        #for variant, impacts in self.pool.imap(gene_info, ((v,
                      self.impacts_headers, self.blobber, self.gt_cols, keys) for
-                     v in variants) , 20):
+                     v in variants)
+                     ):
+                     #, 20):
             variant_impacts.extend(impacts)
             ivariants.append(variant)
         te = time.time() - te
@@ -348,6 +351,14 @@ class VCFDB(object):
 
         self.variants = sql.Table("variants", self.metadata, *self.variants_columns)
         self.variants.drop(checkfirst=True)
+
+        # features table so gemini knows we're using snappy.
+        if self.blobber == snappy_pack_blob:
+            t = sql.Table("features", self.metadata,
+                          sql.Column("feature", sql.String(20)))
+            t.drop(checkfirst=True)
+            t.create()
+            self.engine.execute(t.insert(), {"feature": "snappy_compression"})
 
         self.variants.create()
         self.variant_impacts.create()
@@ -614,10 +625,14 @@ if __name__ == "__main__":
     p.add_argument("-e", "--info-exclude", action='append',
                    help="don't save this field to the database. May be specified " \
                         "multiple times.")
+    p.add_argument("--legacy-compression", action='store_true', default=False)
     p.add_argument("--expand", action='append',
                    help="sample columns to expand into their own tables",
                    choices=GT_TYPE_LOOKUP.keys())
 
     a = p.parse_args()
 
-    v = VCFDB(a.VCF, a.db, a.ped, black_list=a.info_exclude, expand=a.expand)
+    blobber = pack_blob if a.legacy_compression else snappy_pack_blob
+
+    v = VCFDB(a.VCF, a.db, a.ped, black_list=a.info_exclude, expand=a.expand,
+              blobber=blobber)
