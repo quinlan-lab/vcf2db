@@ -416,8 +416,11 @@ class VCFDB(object):
         rows = []
         cols.extend(p.header[6:])
         for i, s in enumerate(p.samples(), start=1):
-            idxs.append(samples.index(s.sample_id))
-            assert s.sample_id in samples
+            try:
+                idxs.append(samples.index(fix_sample_name(s.sample_id)))
+            except ValueError:
+                print("%s not in VCF" % s.sample_id, file=sys.stderr)
+                continue
             rows.append([i, s.family_id, fix_sample_name(s.sample_id), str(s.paternal_id), str(s.maternal_id),
                 '1' if s.sex == 'male' else '2' if s.sex == 'female' else '-9',
                 '2' if s.affected is True else '1' if s.affected is False else '-9',
@@ -626,9 +629,14 @@ if __name__ == "__main__":
                    help="don't save this field to the database. May be specified " \
                         "multiple times.")
     p.add_argument("--legacy-compression", action='store_true', default=False)
-    p.add_argument("--expand", action='append',
+
+    p.add_argument("--expand",
+                   action='append',
+                   default=[],
                    help="sample columns to expand into their own tables",
                    choices=GT_TYPE_LOOKUP.keys())
+
+
 
     a = p.parse_args()
 
