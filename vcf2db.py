@@ -41,6 +41,7 @@ GT_TYPE_LOOKUP = {
         }
 
 def fix_sample_name(s, patt=re.compile('-|\s|\\\\')):
+    if s in ('0', '-9'): return s
     return patt.sub("_", s)
 
 def grouper(n, iterable):
@@ -421,9 +422,12 @@ class VCFDB(object):
             except ValueError:
                 print("%s not in VCF" % s.sample_id, file=sys.stderr)
                 continue
-            rows.append([i, s.family_id, fix_sample_name(s.sample_id), str(s.paternal_id), str(s.maternal_id),
-                '1' if s.sex == 'male' else '2' if s.sex == 'female' else '-9',
-                '2' if s.affected is True else '1' if s.affected is False else '-9',
+            rows.append([i, s.family_id,
+                         fix_sample_name(s.sample_id),
+                         fix_sample_name(str(s.paternal_id)),
+                         fix_sample_name(str(s.maternal_id)),
+                         '1' if s.sex == 'male' else '2' if s.sex == 'female' else '-9',
+                         '2' if s.affected is True else '1' if s.affected is False else '-9',
                 ] + s.attrs)
 
         scols = [sql.Column('sample_id', sql.Integer, primary_key=True)]
