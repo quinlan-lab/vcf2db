@@ -261,13 +261,16 @@ class VCFDB(object):
         ex = time.time() - ex
         vps = i / float(time.time() - self.t0)
 
-        fmt = "%d variant_impacts:%d\teffects time: %.1f\tchunk time:%.1f\t%.2f variants/second"
-        if self.expand:
-            fmt += "\texpanded columns:%.2f\n"
-            sys.stderr.write(fmt % (i, len(variant_impacts), te, time.time() - self.t, vps, ex))
-        else:
-            fmt += "\n"
-            sys.stderr.write(fmt % (i, len(variant_impacts), te, time.time() - self.t, vps))
+        # reduce number of error messages after 100K
+        if i <= 100000 or i % 200000 == 0:
+
+            fmt = "%d variant_impacts:%d\teffects time: %.1f\tchunk time:%.1f\t%.2f variants/second"
+            if self.expand:
+                fmt += "\texpanded columns:%.2f\n"
+                sys.stderr.write(fmt % (i, len(variant_impacts), te, time.time() - self.t, vps, ex))
+            else:
+                fmt += "\n"
+                sys.stderr.write(fmt % (i, len(variant_impacts), te, time.time() - self.t, vps))
 
         self.t = time.time()
 
