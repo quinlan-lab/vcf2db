@@ -549,7 +549,7 @@ class VCFDB(object):
             if id == "id":
                 id = "idx"
 
-            if id.endswith(("_af", "_aaf")) or id.startswith(("af_", "aaf_", "an_")):
+            if id.endswith(("_af", "_aaf")) or id.startswith(("af_", "aaf_", "an_")) or "_aaf_" in id:
                 c = sql.Column(id, sql.Float(), default=-1.0)
             else:
                 c = sql.Column(id, type_lookups[d["Type"]], primary_key=False)
