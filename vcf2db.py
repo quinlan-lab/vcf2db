@@ -423,7 +423,7 @@ class VCFDB(object):
             try:
                 idxs.append(samples.index(fix_sample_name(s.sample_id)))
             except ValueError:
-                print("%s not in VCF" % s.sample_id, file=sys.stderr)
+                print("%s not in VCF" % s.sample_id, file=sys.stderr, end=' ')
                 continue
             rows.append([i, s.family_id,
                          fix_sample_name(s.sample_id),
@@ -433,6 +433,7 @@ class VCFDB(object):
                          '2' if s.affected is True else '1' if s.affected is False else '-9',
                 ] + s.attrs)
 
+        print(file=sys.stderr)
         scols = [sql.Column('sample_id', sql.Integer, primary_key=True)]
         for i, col in enumerate(cols[1:], start=1):
             vals = [r[i] for r in rows]
@@ -565,6 +566,12 @@ class VCFDB(object):
                 c = sql.Column(id, type_lookups[d["Type"]], primary_key=False)
             yield c
 
+class noner(object):
+    def __getattr__(self, key):
+        return None
+
+noner = noner()
+
 def gene_info(d_and_impacts_headers):
     # this is parallelized as it's only simple objects and the gene impacts
     # stuff is slow.
@@ -582,6 +589,9 @@ def gene_info(d_and_impacts_headers):
     top = geneimpacts.Effect.top_severity(impacts)
     if isinstance(top, list):
         top = top[0]
+    elif top is None:
+        top = noner
+
     keys = ('gene', 'transcript', 'is_exonic', 'is_coding', 'is_splicing',
             'is_lof', 'exon', 'codon_change', 'aa_change', 'aa_length',
             'biotype', 'top_consequence', 'so', 'effect_severity',
