@@ -120,7 +120,9 @@ class String(TypeDecorator):
     impl = sql.String
 
     def process_bind_param(self, value, dialect):
-        return value.decode('string_escape')
+        if isinstance(value, unicode):
+            return value.decode('string_escape')
+        return value
 
 class Unicode(TypeDecorator):
     """coerce Python unicode to string"""
