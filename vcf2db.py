@@ -120,7 +120,7 @@ class String(TypeDecorator):
     impl = sql.String
 
     def process_bind_param(self, value, dialect):
-        if isinstance(value, unicode):
+        if isinstance(value, (unicode, str)):
             return value.decode('string_escape')
         return value
 
@@ -131,7 +131,7 @@ class Unicode(TypeDecorator):
 
     def process_bind_param(self, value, dialect):
         if isinstance(value, str):
-            value = value.decode('utf-8')
+            value = value.decode('utf-8').decode('string_escape')
         return value
 
 type_lookups = {
