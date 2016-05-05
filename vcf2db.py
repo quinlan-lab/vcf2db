@@ -112,13 +112,34 @@ def info_parse(line,
     stub = line.split("=<")[1].rstrip(">")
     return dict(_patt.findall(stub))
 
+from sqlalchemy.types import TypeDecorator
+
+class String(TypeDecorator):
+    """coerce Python unicode to string"""
+
+    impl = sql.String
+
+    def process_bind_param(self, value, dialect):
+        if isinstance(value, (unicode, str)):
+            return value.decode('string_escape')
+        return value
+
+class Unicode(TypeDecorator):
+    """coerce Python unicode to string"""
+
+    impl = sql.Unicode
+
+    def process_bind_param(self, value, dialect):
+        if isinstance(value, str):
+            value = value.decode('utf-8').decode('string_escape')
+        return value
 
 type_lookups = {
         "Integer": sql.Integer(),
         "Float": sql.Float(),
         "Flag": sql.Boolean(),
         "Character": sql.String(1),
-        "String": sql.String(5),
+        "String": String(5),
         }
 
 def get_url(db_path):
@@ -287,7 +308,8 @@ class VCFDB(object):
             col = self.variant_impacts.columns[name]
             set_column_length(self.engine, col, clen)
 
-        self.__insert(vi_objs, self.metadata.tables['variant_impacts'].insert())
+        if len(vi_objs) > 0:
+            self.__insert(vi_objs, self.metadata.tables['variant_impacts'].insert())
 
 
     def __insert(self, objs, stmt):
@@ -302,7 +324,6 @@ class VCFDB(object):
                 try:
                     self.engine.execute(stmt, g)
                 except:
-                    self.engine.rollback()
                     with self.engine.begin() as trans:
                         for o in g:
                             trans.execute(stmt, o)
@@ -416,14 +437,13 @@ class VCFDB(object):
         p = Ped(self.ped_path)
         samples = [fix_sample_name(s) for s in self.vcf.samples]
         cols = ['sample_id', 'family_id', 'name', 'paternal_id', 'maternal_id', 'sex', 'phenotype']
-        idxs = []
-        rows = []
+        idxs, rows, not_in_vcf = [], [], []
         cols.extend(p.header[6:])
         for i, s in enumerate(p.samples(), start=1):
             try:
                 idxs.append(samples.index(fix_sample_name(s.sample_id)))
             except ValueError:
-                print("%s not in VCF" % s.sample_id, file=sys.stderr)
+                not_in_vcf.append(s.sample_id)
                 continue
             rows.append([i, s.family_id,
                          fix_sample_name(s.sample_id),
@@ -433,11 +453,17 @@ class VCFDB(object):
                          '2' if s.affected is True else '1' if s.affected is False else '-9',
                 ] + s.attrs)
 
+        if len(not_in_vcf) > 0:
+            print("not in VCF: %s" % ",".join(not_in_vcf), file=sys.stderr)
         scols = [sql.Column('sample_id', sql.Integer, primary_key=True)]
         for i, col in enumerate(cols[1:], start=1):
-            vals = [r[i] for r in rows]
-            l = max(len(v) for v in vals)
-            scols.append(sql.Column(col, sql.String(l)))
+            try:
+                vals = [r[i] for r in rows]
+                l = max(len(v) for v in vals)
+                scols.append(sql.Column(col, Unicode(l)))
+            except:
+                print(col, vals, file=sys.stderr)
+                raise
 
         t = sql.Table('samples', self.metadata, *scols)
         t.drop(checkfirst=True)
@@ -552,6 +578,7 @@ class VCFDB(object):
             if d["ID"] in self.effect_list:
                 self.update_impacts_headers(d)
                 continue
+            if d['Number'] in "RA": continue
 
             id = clean(d["ID"])
             if d["ID"] in self.black_list or id in self.black_list:
@@ -564,6 +591,12 @@ class VCFDB(object):
             else:
                 c = sql.Column(id, type_lookups[d["Type"]], primary_key=False)
             yield c
+
+class noner(object):
+    def __getattr__(self, key):
+        return None
+
+noner = noner()
 
 def gene_info(d_and_impacts_headers):
     # this is parallelized as it's only simple objects and the gene impacts
@@ -582,6 +615,9 @@ def gene_info(d_and_impacts_headers):
     top = geneimpacts.Effect.top_severity(impacts)
     if isinstance(top, list):
         top = top[0]
+    elif top is None:
+        top = noner
+
     keys = ('gene', 'transcript', 'is_exonic', 'is_coding', 'is_splicing',
             'is_lof', 'exon', 'codon_change', 'aa_change', 'aa_length',
             'biotype', 'top_consequence', 'so', 'effect_severity',
