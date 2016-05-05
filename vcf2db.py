@@ -162,6 +162,7 @@ class VCFDB(object):
         self.impacts_headers = {}
         self.metadata = sql.MetaData(bind=self.engine)
         self.expand = expand or []
+        self.stringers = []
 
         self.blobber = blobber
         self.ped_path = ped_path
@@ -254,7 +255,7 @@ class VCFDB(object):
         for variant, impacts in it.imap(gene_info, ((v,
         #for variant, impacts in self.pool.imap(gene_info, ((v,
                      self.impacts_headers, self.blobber, self.gt_cols, keys,
-                     has_samples) for
+                     has_samples, self.stringers) for
                      v in variants)
                      ):
                      #, 20):
@@ -594,9 +595,16 @@ class VCFDB(object):
 
             if id.endswith(("_af", "_aaf")) or id.startswith(("af_", "aaf_", "an_")) or "_aaf_" in id:
                 c = sql.Column(id, sql.Float(), default=-1.0)
+            elif d['Number'] == '.':
+                if d["Type"] != "String":
+                    print("setting %s to Type String because it has Number=." % d["ID"],
+                          file=sys.stderr)
+                c = sql.Column(id, type_lookups["String"], primary_key=False)
+                self.stringers.append(d["ID"])
             else:
                 c = sql.Column(id, type_lookups[d["Type"]], primary_key=False)
             yield c
+        self.stringers = set(self.stringers)
 
 class noner(object):
     def __getattr__(self, key):
@@ -607,7 +615,7 @@ noner = noner()
 def gene_info(d_and_impacts_headers):
     # this is parallelized as it's only simple objects and the gene impacts
     # stuff is slow.
-    d, impacts_headers, blobber, gt_cols, req_cols, has_samples = d_and_impacts_headers
+    d, impacts_headers, blobber, gt_cols, req_cols, has_samples, stringers = d_and_impacts_headers
     impacts = []
     for k in (eff for eff in ("CSQ", "ANN", "EFF") if eff in d):
         if k == "CSQ":
@@ -646,7 +654,12 @@ def gene_info(d_and_impacts_headers):
     u = dict.fromkeys(req_cols)
     u.update(d)
     for k in (rc for rc in req_cols if not rc.islower()):
-        u[k.lower()] = d.get(k)
+        if k in stringers:
+            v = encode(d.get(k))
+
+            u[k.lower()] = v
+        else:
+            u[k.lower()] = d.get(k)
     d = u
 
     gimpacts = []
@@ -665,6 +678,18 @@ def gene_info(d_and_impacts_headers):
                              sift_pred=impact.sift_pred,
                              sift_score=impact.sift_score))
     return d, gimpacts
+
+def encode(v):
+    if v.__class__ in (list, tuple):
+        v = u",".join(unicode(item).encode('utf-8') for item in v)
+    elif not v.__class__ in (str, unicode):
+        v = str(v)
+    if v is not None:
+        try:
+            v.encode('utf-8')
+        except UnicodeDecodeError:
+            v = v.decode('utf-8')
+    return v
 
 if __name__ == "__main__":
 
