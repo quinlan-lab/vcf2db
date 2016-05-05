@@ -193,12 +193,13 @@ class VCFDB(object):
         i = None
         for i, v in enumerate(iterable, start=start):
             d = dict(v.INFO)
-            for c in self.gt_cols:
-                # named gt_bases in cyvcf2 and gts in db
-                arr = v.gt_bases if c == "gts" else getattr(v, c, None)
-                if arr is not None:
-                    arr = arr[self.sample_idxs]
-                d[c] = arr
+            if self.sample_idxs is not None:
+                for c in self.gt_cols:
+                    # named gt_bases in cyvcf2 and gts in db
+                    arr = v.gt_bases if c == "gts" else getattr(v, c, None)
+                    if arr is not None:
+                        arr = arr[self.sample_idxs]
+                    d[c] = arr
 
             d['chrom'], d['start'], d['end'] = v.CHROM, v.start, v.end
             d['ref'], d['alt'] = v.REF, ",".join(v.ALT)
@@ -249,9 +250,11 @@ class VCFDB(object):
     def insert(self, variants, expanded, keys, i, create=False):
         ivariants, variant_impacts = [], []
         te = time.time()
+        has_samples = not self.sample_idxs is None
         for variant, impacts in it.imap(gene_info, ((v,
         #for variant, impacts in self.pool.imap(gene_info, ((v,
-                     self.impacts_headers, self.blobber, self.gt_cols, keys) for
+                     self.impacts_headers, self.blobber, self.gt_cols, keys,
+                     has_samples) for
                      v in variants)
                      ):
                      #, 20):
@@ -435,6 +438,9 @@ class VCFDB(object):
 
     def create_samples(self):
         p = Ped(self.ped_path)
+        if p.header is None:
+            self.sample_idxs = None
+            return
         samples = [fix_sample_name(s) for s in self.vcf.samples]
         cols = ['sample_id', 'family_id', 'name', 'paternal_id', 'maternal_id', 'sex', 'phenotype']
         idxs, rows, not_in_vcf = [], [], []
@@ -601,7 +607,7 @@ noner = noner()
 def gene_info(d_and_impacts_headers):
     # this is parallelized as it's only simple objects and the gene impacts
     # stuff is slow.
-    d, impacts_headers, blobber, gt_cols, req_cols = d_and_impacts_headers
+    d, impacts_headers, blobber, gt_cols, req_cols, has_samples = d_and_impacts_headers
     impacts = []
     for k in (eff for eff in ("CSQ", "ANN", "EFF") if eff in d):
         if k == "CSQ":
@@ -624,15 +630,17 @@ def gene_info(d_and_impacts_headers):
             'polyphen_pred', 'polyphen_score', 'sift_pred', 'sift_score')
 
 
-    for k in keys:
-        d[k] = getattr(top, k)
+    if has_samples:
+        for k in keys:
+            d[k] = getattr(top, k)
 
     d['impact'] = top.top_consequence
     d['impact_so'] = top.so
     d['impact_severity'] = top.effect_severity
 
-    for c in gt_cols:
-        d[c] = blobber(d[c])
+    if has_samples:
+        for c in gt_cols:
+            d[c] = blobber(d[c])
 
     # add what we need.
     u = dict.fromkeys(req_cols)
