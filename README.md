@@ -14,6 +14,17 @@ With sqlite3. This inserts at about 1200 variants / second including time to ind
 **NOTE** while this allows loading into `mysql` and `postgres`, you will need gemini version
 from github to use the database once it is loaded into `mysql` and `postgres`.
 
+Installation
+============
+
+```
+git clone https://github.com/quinlan-lab/vcf2db
+cd vcf2db
+conda install -y gcc snappy # install the C library for snappy
+conda install -c nlesc python-snappy=0.5
+pip install -r requirements.txt
+```
+
 How It Works
 ============
 
