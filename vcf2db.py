@@ -15,7 +15,6 @@ except ImportError:
 
 import time
 from collections import defaultdict
-import multiprocessing
 
 import numpy as np
 import sqlalchemy as sql
@@ -142,7 +141,7 @@ type_lookups = {
         "String": String(5),
         }
 
-def get_url(db_path):
+def get_dburl(db_path):
     if not db_path.startswith(("sqlite:", "mysql", "postgres")):
         db_path = "sqlite:///" + db_path
     return db_path
@@ -157,7 +156,7 @@ class VCFDB(object):
     def __init__(self, vcf_path, db_path, ped_path=None, blobber=pack_blob,
                  black_list=None, expand=None):
         self.vcf_path = vcf_path
-        self.db_path = get_url(db_path)
+        self.db_path = get_dburl(db_path)
         self.engine = sql.create_engine(self.db_path, poolclass=sql.pool.NullPool)
         self.impacts_headers = {}
         self.metadata = sql.MetaData(bind=self.engine)
@@ -167,7 +166,6 @@ class VCFDB(object):
         self.blobber = blobber
         self.ped_path = ped_path
         self.black_list = list(VCFDB._black_list) + list(VCFDB.effect_list) + (black_list or [])
-        self.pool = multiprocessing.Pool(2)
 
         self.vcf = cyvcf2.VCF(vcf_path)
         # we use the cache to infer the lengths of string fields.
@@ -192,13 +190,15 @@ class VCFDB(object):
         expanded = {k: [] for k in self.expand}
         keys = set()
         i = None
+        must_idx = not np.all(self.sample_idxs == range(len(self.sample_idxs)))
+
         for i, v in enumerate(iterable, start=start):
             d = dict(v.INFO)
             if self.sample_idxs is not None:
                 for c in self.gt_cols:
                     # named gt_bases in cyvcf2 and gts in db
                     arr = v.gt_bases if c == "gts" else getattr(v, c, None)
-                    if arr is not None:
+                    if arr is not None and must_idx:
                         arr = arr[self.sample_idxs]
                     d[c] = arr
 
@@ -253,12 +253,10 @@ class VCFDB(object):
         te = time.time()
         has_samples = not self.sample_idxs is None
         for variant, impacts in it.imap(gene_info, ((v,
-        #for variant, impacts in self.pool.imap(gene_info, ((v,
                      self.impacts_headers, self.blobber, self.gt_cols, keys,
                      has_samples, self.stringers) for
                      v in variants)
                      ):
-                     #, 20):
             variant_impacts.extend(impacts)
             ivariants.append(variant)
         te = time.time() - te
