@@ -1,6 +1,6 @@
 from __future__ import print_function
 import os
-from vcf2db import VCFDB, get_url
+from vcf2db import VCFDB, get_dburl
 import atexit
 import sqlalchemy as sql
 import sys
@@ -24,7 +24,7 @@ def test_load():
 
     v = VCFDB(vcf, db, ped)
 
-    eng = sql.create_engine(get_url(db))
+    eng = sql.create_engine(get_dburl(db))
     metadata = sql.MetaData(bind=eng)
     metadata.reflect()
 
@@ -69,7 +69,7 @@ def test_load_expand():
     expand = ['gt_types', 'gt_ref_depths', 'gt_alt_depths']
     v = VCFDB(vcf, db, ped, expand=expand)
 
-    eng = sql.create_engine(get_url(db))
+    eng = sql.create_engine(get_dburl(db))
     metadata = sql.MetaData(bind=eng)
     metadata.reflect()
 

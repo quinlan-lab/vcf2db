@@ -31,6 +31,8 @@ except ImportError:
 import pstats
 import contextlib
 
+__version__ = "0.0.1"
+
 GT_TYPE_LOOKUP = {
         'gt_depths': sql.Integer,
         'gt_ref_depths': sql.Integer,
@@ -378,6 +380,11 @@ class VCFDB(object):
 
         self.variants = sql.Table("variants", self.metadata, *self.variants_columns)
         self.variants.drop(checkfirst=True)
+
+        version = sql.Table("version", self.metadata, sql.Column('version', sql.String(45)))
+        version.drop(checkfirst=True)
+        version.create()
+        self.engine.execute(version.insert(), {"version": ("vcf2db-%s" % __version__)})
 
         # features table so gemini knows we're using snappy.
         if self.blobber == snappy_pack_blob:
