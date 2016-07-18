@@ -52,6 +52,8 @@ While under Python 3 it will take a string and encode it to return a bytes objec
 >>> b('GIF89a')
 b'GIF89a'
 """
+
+# http://python3porting.com/problems.html#nicer-solutions
 # Python2
 if sys.version_info < (3,):
     from itertools import imap as map
