@@ -30,6 +30,8 @@ except ImportError:
 
 import pstats
 import contextlib
+import locale
+ENC = locale.getpreferredencoding()
 
 __version__ = "0.0.1"
 
@@ -41,9 +43,39 @@ GT_TYPE_LOOKUP = {
         'gt_types': sql.SmallInteger,
         }
 
+"""
+Under Python 2 this function b() will return the string you pass in, ready for use as binary data:
+>>> b('GIF89a')
+'GIF89a'
+
+While under Python 3 it will take a string and encode it to return a bytes object:
+>>> b('GIF89a')
+b'GIF89a'
+"""
+# Python2
+if sys.version_info < (3,):
+    from itertools import imap as map
+    ESCAPE = "string_escape"
+    def b(x):
+        return x
+# Python3
+else:
+    ESCAPE = "unicode_escape"
+    unicode = str
+    buffer = memoryview
+    def b(x):
+        return x.encode('ISO-8859-1')
+
+def from_bytes(s):
+    if isinstance(s, bytes):
+        return s.decode(ENC)
+    return s
+
+
+
 def fix_sample_name(s, patt=re.compile('-|\s|\\\\')):
     if s in ('0', '-9'): return s
-    return patt.sub("_", s)
+    return patt.sub("_", from_bytes(s))
 
 def grouper(n, iterable):
     iterable = iter(iterable)
@@ -65,7 +97,8 @@ def profiled():
     # ps.print_callers()
     print(s.getvalue())
 
-def set_column_length(e, column, length, saved={}):
+def set_column_length(e, column, length, saved=None):
+    if saved is None: saved = {}  # avoid mutable default argument
     table = column.table
     c = column.table.columns[column.name]
     if c.type.length >= length:
@@ -111,7 +144,7 @@ def info_parse(line,
     """
     assert line.startswith("##INFO=")
     stub = line.split("=<")[1].rstrip(">")
-    return dict(_patt.findall(stub))
+    return dict(_patt.findall(from_bytes(stub)))
 
 from sqlalchemy.types import TypeDecorator
 
@@ -122,7 +155,7 @@ class String(TypeDecorator):
 
     def process_bind_param(self, value, dialect):
         if isinstance(value, (unicode, str)):
-            return value.decode('string_escape')
+            return b(value).decode(ESCAPE)
         return value
 
 class Unicode(TypeDecorator):
@@ -132,7 +165,7 @@ class Unicode(TypeDecorator):
 
     def process_bind_param(self, value, dialect):
         if isinstance(value, str):
-            value = value.decode('utf-8').decode('string_escape')
+            value = b(b(value).decode('utf-8')).decode(ESCAPE)
         return value
 
 type_lookups = {
@@ -254,7 +287,7 @@ class VCFDB(object):
         ivariants, variant_impacts = [], []
         te = time.time()
         has_samples = not self.sample_idxs is None
-        for variant, impacts in it.imap(gene_info, ((v,
+        for variant, impacts in map(gene_info, ((v,
                      self.impacts_headers, self.blobber, self.gt_cols, keys,
                      has_samples, self.stringers) for
                      v in variants)
@@ -443,15 +476,15 @@ class VCFDB(object):
         sys.stderr.write("total time: in %.1f seconds...\n" % (time.time() - self.t0))
 
     def create_samples(self):
-        p = Ped(self.ped_path)
-        if p.header is None:
+        ped = Ped(self.ped_path)
+        if ped.header is None:
             self.sample_idxs = None
             return
         samples = [fix_sample_name(s) for s in self.vcf.samples]
         cols = ['sample_id', 'family_id', 'name', 'paternal_id', 'maternal_id', 'sex', 'phenotype']
         idxs, rows, not_in_vcf = [], [], []
-        cols.extend(p.header[6:])
-        for i, s in enumerate(p.samples(), start=1):
+        cols.extend(ped.header[6:])
+        for i, s in enumerate(ped.samples(), start=1):
             try:
                 idxs.append(samples.index(fix_sample_name(s.sample_id)))
             except ValueError:
@@ -469,6 +502,7 @@ class VCFDB(object):
             print("not in VCF: %s" % ",".join(not_in_vcf), file=sys.stderr)
         scols = [sql.Column('sample_id', sql.Integer, primary_key=True)]
         for i, col in enumerate(cols[1:], start=1):
+            vals = None
             try:
                 vals = [r[i] for r in rows]
                 l = max(len(v) for v in vals)
@@ -567,7 +601,7 @@ class VCFDB(object):
         return [sql.Column(name, sql.LargeBinary()) for name in self.gt_cols]
 
     def update_impacts_headers(self, hdr_dict):
-        "keep the description so we know how to parse the CSQ/ANN fields"
+        """keep the description so we know how to parse the CSQ/ANN fields"""
 
         desc = hdr_dict["Description"]
         if hdr_dict["ID"] == "ANN":
@@ -581,8 +615,8 @@ class VCFDB(object):
         self.impacts_headers[hdr_dict["ID"]] = parts
 
     def variants_info_columns(self, raw_header):
-        "create Column() objects for each entry in the info field"
-        for l in (x.strip() for x in raw_header.split("\n")):
+        """create Column() objects for each entry in the info field"""
+        for l in (x.strip() for x in from_bytes(raw_header).split("\n")):
             if not l.startswith("##INFO"):
                 continue
 
@@ -592,22 +626,22 @@ class VCFDB(object):
                 continue
             if d['Number'] in "RA": continue
 
-            id = clean(d["ID"])
-            if d["ID"] in self.black_list or id in self.black_list:
+            cid = clean(d["ID"])
+            if d["ID"] in self.black_list or cid in self.black_list:
                 continue
-            if id == "id":
-                id = "idx"
+            if cid == "id":
+                cid = "idx"
 
-            if id.endswith(("_af", "_aaf")) or id.startswith(("af_", "aaf_", "an_")) or "_aaf_" in id:
-                c = sql.Column(id, sql.Float(), default=-1.0)
+            if cid.endswith(("_af", "_aaf")) or cid.startswith(("af_", "aaf_", "an_")) or "_aaf_" in cid:
+                c = sql.Column(cid, sql.Float(), default=-1.0)
             elif d['Number'] == '.':
                 if d["Type"] != "String":
                     print("setting %s to Type String because it has Number=." % d["ID"],
                           file=sys.stderr)
-                c = sql.Column(id, type_lookups["String"], primary_key=False)
+                c = sql.Column(cid, type_lookups["String"], primary_key=False)
                 self.stringers.append(d["ID"])
             else:
-                c = sql.Column(id, type_lookups[d["Type"]], primary_key=False)
+                c = sql.Column(cid, type_lookups[d["Type"]], primary_key=False)
             yield c
         self.stringers = set(self.stringers)
 
@@ -623,12 +657,13 @@ def gene_info(d_and_impacts_headers):
     d, impacts_headers, blobber, gt_cols, req_cols, has_samples, stringers = d_and_impacts_headers
     impacts = []
     for k in (eff for eff in ("CSQ", "ANN", "EFF") if eff in d):
+        dk = from_bytes(d[k]).split(',')
         if k == "CSQ":
-            impacts.extend(geneimpacts.VEP(e, impacts_headers[k], checks=False) for e in d[k].split(","))
+            impacts.extend(geneimpacts.VEP(e, impacts_headers[k], checks=False) for e in dk)
         elif k == "ANN":
-            impacts.extend(geneimpacts.SnpEff(e, impacts_headers[k]) for e in d[k].split(","))
+            impacts.extend(geneimpacts.SnpEff(e, impacts_headers[k]) for e in dk)
         elif k == "EFF":
-            impacts.extend(geneimpacts.OldSnpEff(e, impacts_headers[k]) for e in d[k].split(","))
+            impacts.extend(geneimpacts.OldSnpEff(e, impacts_headers[k]) for e in dk)
         del d[k] # save some memory
 
     top = geneimpacts.Effect.top_severity(impacts)
@@ -686,14 +721,14 @@ def gene_info(d_and_impacts_headers):
 
 def encode(v):
     if v.__class__ in (list, tuple):
-        v = u",".join(unicode(item).encode('utf-8') for item in v)
+        v = u",".join(b(unicode(item)) for item in v)
     elif not v.__class__ in (str, unicode):
         v = str(v)
     if v is not None:
         try:
             v.encode('utf-8')
         except UnicodeDecodeError:
-            v = v.decode('utf-8')
+            v = from_bytes(v)
     return v
 
 if __name__ == "__main__":
@@ -721,7 +756,6 @@ if __name__ == "__main__":
 
     a = p.parse_args()
 
-    blobber = pack_blob if a.legacy_compression else snappy_pack_blob
+    main_blobber = pack_blob if a.legacy_compression else snappy_pack_blob
 
-    v = VCFDB(a.VCF, a.db, a.ped, black_list=a.info_exclude, expand=a.expand,
-              blobber=blobber)
+    VCFDB(a.VCF, a.db, a.ped, black_list=a.info_exclude, expand=a.expand, blobber=main_blobber)
