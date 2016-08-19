@@ -22,6 +22,7 @@ git clone https://github.com/quinlan-lab/vcf2db
 cd vcf2db
 conda install -y gcc snappy # install the C library for snappy
 conda install -c nlesc python-snappy=0.5
+conda install -c bioconda cyvcf2 peddy
 pip install -r requirements.txt
 ```
 
@@ -42,15 +43,6 @@ means to do this with [vcfanno](https://github.com/brentp/vcfanno).
 At this point, the script works and creates a gemini-compatible database. **It is therefore possible to use
 gemini with GRCh38 or other organisms**. But the utility will depend on the resources that are available
 for the given genome build and organism.
-
-Installation
-============
-
-```
-pip install -r requirements.txt
-```
-
-Then use as a script.
 
 Workflow
 ========
@@ -74,10 +66,11 @@ Load
 Gather a PED file and load with the script:
 
 ```
-python vcf2db.py some.annotated.vcf.gz my.gemini.db some.ped
+python vcf2db.py some.annotated.vcf.gz some.ped my.gemini.db
 ```
 
-To have the sample fields expanded into separate tables, use:
+To have the sample fields expanded into separate tables so that they can be used INFO
+SQL queries directly, use:
 ```
-python vcf2db.py some.annotated.vcf.gz my.gemini.db some.ped --expand gt_types --expand gt_ref_depths --expand gt_alt_depths
+python vcf2db.py some.annotated.vcf.gz some.ped my.gemini.db --expand gt_types --expand gt_ref_depths --expand gt_alt_depths
 ```

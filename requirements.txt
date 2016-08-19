@@ -1,6 +1,6 @@
 sqlalchemy>=0.9
 cyvcf2>=0.2.0
 numpy>=1.0
-git+git://github.com/brentp/peddy.git#egg=peddy
-git+git://github.com/brentp/geneimpacts.git#egg=geneimpacts
+git+https://github.com/brentp/peddy.git#egg=peddy
+git+https://github.com/brentp/geneimpacts.git#egg=geneimpacts
 python-snappy
