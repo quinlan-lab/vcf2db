@@ -486,19 +486,21 @@ class VCFDB(object):
         cols = ['sample_id', 'family_id', 'name', 'paternal_id', 'maternal_id', 'sex', 'phenotype']
         idxs, rows, not_in_vcf = [], [], []
         cols.extend(ped.header[6:])
+        sample_id = 1
         for i, s in enumerate(ped.samples(), start=1):
             try:
                 idxs.append(samples.index(fix_sample_name(s.sample_id)))
             except ValueError:
                 not_in_vcf.append(s.sample_id)
                 continue
-            rows.append([i, s.family_id,
+            rows.append([sample_id, s.family_id,
                          fix_sample_name(s.sample_id),
                          fix_sample_name(str(s.paternal_id)),
                          fix_sample_name(str(s.maternal_id)),
                          '1' if s.sex == 'male' else '2' if s.sex == 'female' else '-9',
                          '2' if s.affected is True else '1' if s.affected is False else '-9',
                 ] + s.attrs)
+            sample_id += 1
 
         if len(not_in_vcf) > 0:
             print("not in VCF: %s" % ",".join(not_in_vcf), file=sys.stderr)
