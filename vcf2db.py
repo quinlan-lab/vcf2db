@@ -479,9 +479,9 @@ class VCFDB(object):
 
     def create_samples(self):
         ped = Ped(self.ped_path)
+        cols = ['sample_id', 'family_id', 'name', 'paternal_id', 'maternal_id', 'sex', 'phenotype']
         if ped.header is None:
-            self.sample_idxs = None
-            return
+            ped.header = [x for x in cols if x != 'name']
         samples = [fix_sample_name(s) for s in self.vcf.samples]
         cols = ['sample_id', 'family_id', 'name', 'paternal_id', 'maternal_id', 'sex', 'phenotype']
         idxs, rows, not_in_vcf = [], [], []
