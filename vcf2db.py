@@ -199,6 +199,7 @@ class VCFDB(object):
         self.metadata = sql.MetaData(bind=self.engine)
         self.expand = expand or []
         self.stringers = []
+        self.af_cols = []  # track these to set to -1
 
         self.blobber = blobber
         self.ped_path = ped_path
@@ -289,8 +290,6 @@ class VCFDB(object):
         ivariants, variant_impacts = [], []
         te = time.time()
         has_samples = not self.sample_idxs is None
-        afs = [k for k in keys if af_like(k)] 
-        keys = [k for k in keys if not af_like(k)]
 
         for variant, impacts in map(gene_info, ((v,
                      self.impacts_headers, self.blobber, self.gt_cols, keys,
@@ -298,9 +297,9 @@ class VCFDB(object):
                      v in variants)
                      ):
             # set afs columns to 0 by default.
-            for k in afs:
-                if variant.get(k) is None:
-                    variant[k] = -1.0
+            for col in self.af_cols:
+                if variant.get(col) is None:
+                    variant[col] = -1.0
             variant_impacts.extend(impacts)
             ivariants.append(variant)
         te = time.time() - te
@@ -645,6 +644,7 @@ class VCFDB(object):
 
             if af_like(cid):
                 c = sql.Column(cid, sql.Float(), default=-1.0, nullable=False)
+                self.af_cols.append(cid)
             elif d['Number'] == '.':
                 if d["Type"] != "String":
                     print("setting %s to Type String because it has Number=." % d["ID"],
