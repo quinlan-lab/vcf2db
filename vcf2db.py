@@ -238,7 +238,9 @@ class VCFDB(object):
                     arr = v.gt_bases if c == "gts" else getattr(v, c, None)
                     if arr is not None and must_idx:
                         arr = arr[self.sample_idxs]
-                    d[c] = arr
+                    # must copy or it goes away as it's a
+                    # view of the C copy
+                    d[c] = np.array(arr)
 
             d['chrom'], d['start'], d['end'] = v.CHROM, v.start, v.end
             d['ref'], d['alt'] = v.REF, ",".join(v.ALT)
@@ -296,9 +298,10 @@ class VCFDB(object):
                      has_samples, self.stringers) for
                      v in variants)
                      ):
-            # set afs columns to 0 by default.
+            # set afs columns to -1 by default.
             for col in self.af_cols:
-                if variant.get(col) is None:
+                af_val = variant.get(col)
+                if af_val is None or np.isnan(af_val):
                     variant[col] = -1.0
             variant_impacts.extend(impacts)
             ivariants.append(variant)
@@ -371,7 +374,11 @@ class VCFDB(object):
                 except:
                     with self.engine.begin() as trans:
                         for o in g:
-                            trans.execute(stmt, o)
+                            try:
+                                trans.execute(stmt, o)
+                            except:
+                                print("bad record:", o)
+                                raise
                     raise
         else:
             try:
