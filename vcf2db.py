@@ -289,11 +289,18 @@ class VCFDB(object):
         ivariants, variant_impacts = [], []
         te = time.time()
         has_samples = not self.sample_idxs is None
+        afs = [k for k in keys if af_like(k)] 
+        keys = [k for k in keys if not af_like(k)]
+
         for variant, impacts in map(gene_info, ((v,
                      self.impacts_headers, self.blobber, self.gt_cols, keys,
                      has_samples, self.stringers) for
                      v in variants)
                      ):
+            # set afs columns to 0 by default.
+            for k in afs:
+                if variant.get(k) is None:
+                    variant[k] = -1.0
             variant_impacts.extend(impacts)
             ivariants.append(variant)
         te = time.time() - te
@@ -636,8 +643,8 @@ class VCFDB(object):
             if cid == "id":
                 cid = "idx"
 
-            if cid.endswith(("_af", "_aaf")) or cid.startswith(("af_", "aaf_", "an_")) or "_aaf_" in cid:
-                c = sql.Column(cid, sql.Float(), default=-1.0)
+            if af_like(cid):
+                c = sql.Column(cid, sql.Float(), default=-1.0, nullable=False)
             elif d['Number'] == '.':
                 if d["Type"] != "String":
                     print("setting %s to Type String because it has Number=." % d["ID"],
@@ -648,6 +655,9 @@ class VCFDB(object):
                 c = sql.Column(cid, type_lookups[d["Type"]], primary_key=False)
             yield c
         self.stringers = set(self.stringers)
+
+def af_like(cid):
+    return cid.endswith(("_af", "_aaf")) or cid.startswith(("af_", "aaf_", "an_")) or "_aaf_" in cid
 
 class noner(object):
     def __getattr__(self, key):
@@ -704,8 +714,9 @@ def gene_info(d_and_impacts_headers):
             u[k.lower()] = v
         else:
             u[k.lower()] = d.get(k)
-    d = u
 
+
+    d = u
     gimpacts = []
     for impact in impacts:
         #gimpacts.append({k: getattr(impact, k) for k in keys})

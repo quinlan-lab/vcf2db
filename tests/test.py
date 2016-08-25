@@ -39,6 +39,14 @@ def test_load():
     yield check_header, metadata
     yield check_samples, metadata
     yield check_variants, metadata
+    yield check_aaf, metadata
+
+def check_aaf(metadata):
+
+    tbl = metadata.tables["variants"]
+    afs = [x[0] for x in sql.select([tbl.c.max_aaf_all]).execute()]
+    assert not [x for x in afs if x is None], afs
+
 
 def check_header(metadata):
 
