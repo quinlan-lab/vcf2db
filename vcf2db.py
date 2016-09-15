@@ -641,7 +641,11 @@ class VCFDB(object):
             if d["ID"] in self.effect_list:
                 self.update_impacts_headers(d)
                 continue
-            if d['Number'] in "RA": continue
+            if d['Number'] in "RA":
+                print("skipping '%s' because it has Number=%s" % (d["ID"], d["Number"]), 
+                      file=sys.stderr)
+                continue
+
 
             cid = clean(d["ID"])
             if d["ID"] in self.black_list or cid in self.black_list:
