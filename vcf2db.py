@@ -200,6 +200,7 @@ class VCFDB(object):
         self.expand = expand or []
         self.stringers = []
         self.af_cols = []  # track these to set to -1
+        self.extra_columns = []
 
         self.blobber = blobber
         self.ped_path = ped_path
@@ -295,7 +296,7 @@ class VCFDB(object):
 
         for variant, impacts in map(gene_info, ((v,
                      self.impacts_headers, self.blobber, self.gt_cols, keys,
-                     has_samples, self.stringers) for
+                     has_samples, self.stringers, self.extra_columns) for
                      v in variants)
                      ):
             # set afs columns to -1 by default.
@@ -477,7 +478,7 @@ class VCFDB(object):
     def get_variant_impacts_columns(self):
         return [sql.Column("variant_id", sql.Integer,
                            sql.ForeignKey("variants.variant_id"), nullable=False),
-                ] + self.variants_gene_columns()
+                ] + self.variants_gene_columns() + list(self.get_extra_cols())
 
     def index(self):
         sys.stderr.write("indexing ... ")
@@ -544,8 +545,15 @@ class VCFDB(object):
         columns.extend(self.variants_gene_columns())
         columns.extend(self.variants_sv_columns())
         columns.extend(self.variants_info_columns(self.vcf.raw_header))
+        # now file extra from, e.g. CSQ field that go in both variants and
+        # variant_impacts
+        columns.extend(self.get_extra_cols())
         columns.extend(self.variants_genotype_columns())
         return columns
+
+    def get_extra_cols(self):
+        for c in self.extra_columns:
+            yield sql.Column(c.lower(), sql.String(10))
 
     def variants_default_columns(self):
         return [
@@ -640,6 +648,10 @@ class VCFDB(object):
             d = info_parse(l)
             if d["ID"] in self.effect_list:
                 self.update_impacts_headers(d)
+                default = set(KEY_2_CLASS[d["ID"]].keys)
+                # these are extra columns from VEP that arent in the impacts # modules.
+                self.extra_columns.extend([x for x in self.impacts_headers[d["ID"]] if not x in default])
+
                 continue
             if d['Number'] in "RA":
                 print("skipping '%s' because it has Number=%s" % (d["ID"], d["Number"]), 
@@ -672,23 +684,27 @@ def af_like(cid):
 
 class noner(object):
     def __getattr__(self, key):
+        # this line is so we can get e.g. top.effects['HGNC']
+        if key == 'effects': return defaultdict(str)
         return None
 
 noner = noner()
 
+KEY_2_CLASS = {
+        'CSQ': geneimpacts.VEP,
+        'EFF': geneimpacts.OldSnpEff,
+        'ANN': geneimpacts.SnpEff
+        }
+
 def gene_info(d_and_impacts_headers):
     # this is parallelized as it's only simple objects and the gene impacts
     # stuff is slow.
-    d, impacts_headers, blobber, gt_cols, req_cols, has_samples, stringers = d_and_impacts_headers
+    d, impacts_headers, blobber, gt_cols, req_cols, has_samples, stringers, extra_columns = d_and_impacts_headers
     impacts = []
-    for k in (eff for eff in ("CSQ", "ANN", "EFF") if eff in d):
+    for k, cls in KEY_2_CLASS.items():
+        if not k in d: continue
         dk = from_bytes(d[k]).split(',')
-        if k == "CSQ":
-            impacts.extend(geneimpacts.VEP(e, impacts_headers[k], checks=False) for e in dk)
-        elif k == "ANN":
-            impacts.extend(geneimpacts.SnpEff(e, impacts_headers[k]) for e in dk)
-        elif k == "EFF":
-            impacts.extend(geneimpacts.OldSnpEff(e, impacts_headers[k]) for e in dk)
+        impacts.extend(cls(e, impacts_headers[k]) for e in dk)
         del d[k] # save some memory
 
     top = geneimpacts.Effect.top_severity(impacts)
@@ -706,6 +722,8 @@ def gene_info(d_and_impacts_headers):
     if has_samples:
         for k in keys:
             d[k] = getattr(top, k)
+        for k in extra_columns:
+            d[k.lower()] = top.effects.get(k, '')
 
     d['impact'] = top.top_consequence
     d['impact_so'] = top.so
@@ -721,7 +739,6 @@ def gene_info(d_and_impacts_headers):
     for k in (rc for rc in req_cols if not rc.islower()):
         if k in stringers:
             v = encode(d.get(k))
-
             u[k.lower()] = v
         else:
             u[k.lower()] = d.get(k)
@@ -743,6 +760,8 @@ def gene_info(d_and_impacts_headers):
                              polyphen_score=impact.polyphen_score,
                              sift_pred=impact.sift_pred,
                              sift_score=impact.sift_score))
+        for k in impact.unused():
+            gimpacts[-1][k.lower()] = impact.effects.get(k, '')
     return d, gimpacts
 
 def encode(v):

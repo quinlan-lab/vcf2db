@@ -18,7 +18,7 @@ def rm(f):
     except OSError:
         pass
 
-atexit.register(rm, db)
+#atexit.register(rm, db)
 
 def test_load():
 
