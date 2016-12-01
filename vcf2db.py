@@ -187,7 +187,7 @@ class VCFDB(object):
     gt_cols = ("gts", "gt_types", "gt_phases", "gt_depths", "gt_ref_depths",
                "gt_alt_depths", "gt_quals")
 
-    effect_list = ["CSQ", "ANN", "EFF"]
+    effect_list = ["CSQ", "ANN", "EFF", "BCSQ"]
     _black_list = []
 
     def __init__(self, vcf_path, db_path, ped_path=None, blobber=pack_blob,
@@ -635,6 +635,8 @@ class VCFDB(object):
             parts = [x.strip(" [])'(\"") for x in re.split("\||\(", desc.split(":", 1)[1].strip())]
         elif hdr_dict["ID"] == "CSQ":
             parts = [x.strip(" [])'(\"") for x in re.split("\||\(", desc.split(":", 1)[1].strip())]
+        elif hdr_dict["ID"] == "BCSQ":
+            parts = [x.replace(" ", "_") for x in desc.rstrip("]\"").split("Format: ")[1].replace("[", "").split(",")]
         else:
             raise Exception("don't know how to use %s as annotation" % hdr_dict["ID"])
         self.impacts_headers[hdr_dict["ID"]] = parts
@@ -693,7 +695,8 @@ noner = noner()
 KEY_2_CLASS = {
         'CSQ': geneimpacts.VEP,
         'EFF': geneimpacts.OldSnpEff,
-        'ANN': geneimpacts.SnpEff
+        'ANN': geneimpacts.SnpEff,
+        'BCSQ': geneimpacts.BCFT,
         }
 
 def gene_info(d_and_impacts_headers):
