@@ -654,7 +654,7 @@ class VCFDB(object):
 
                 continue
             if d['Number'] in "RA":
-                print("skipping '%s' because it has Number=%s" % (d["ID"], d["Number"]), 
+                print("skipping '%s' because it has Number=%s" % (d["ID"], d["Number"]),
                       file=sys.stderr)
                 continue
 
