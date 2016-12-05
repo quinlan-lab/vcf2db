@@ -26,6 +26,16 @@ conda install -c bioconda cyvcf2 peddy
 pip install -r requirements.txt
 ```
 
+Annotation
+==========
+
+vcf2db now supports using bcftools csq so you can annotate with bcftools like:
+
+```
+wget ftp://ftp.ensembl.org/pub/grch37/release-84/gff3/homo_sapiens/Homo_sapiens.GRCh37.82.chr.gff3.gz
+./bcftools csq --local-csq -p R -g Homo_sapiens.GRCh37.82.chr.gff3.gz -f $fasta $vcf
+```
+
 How It Works
 ============
 
