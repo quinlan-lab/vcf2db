@@ -636,7 +636,7 @@ class VCFDB(object):
         elif hdr_dict["ID"] == "CSQ":
             parts = [x.strip(" [])'(\"") for x in re.split("\||\(", desc.split(":", 1)[1].strip())]
         elif hdr_dict["ID"] == "BCSQ":
-            parts = [x.replace(" ", "_") for x in desc.rstrip("]\"").split("Format: ")[1].replace("[", "").split(",")]
+            parts = desc.split(']', 1)[1].split(']')[0].replace('[','').split("|")
         else:
             raise Exception("don't know how to use %s as annotation" % hdr_dict["ID"])
         self.impacts_headers[hdr_dict["ID"]] = parts
@@ -656,7 +656,7 @@ class VCFDB(object):
 
                 continue
             if d['Number'] in "RA":
-                print("skipping '%s' because it has Number=%s" % (d["ID"], d["Number"]), 
+                print("skipping '%s' because it has Number=%s" % (d["ID"], d["Number"]),
                       file=sys.stderr)
                 continue
 
