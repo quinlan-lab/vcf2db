@@ -721,7 +721,6 @@ def gene_info(d_and_impacts_headers):
             'biotype', 'top_consequence', 'so', 'effect_severity',
             'polyphen_pred', 'polyphen_score', 'sift_pred', 'sift_score')
 
-
     if has_samples:
         for k in keys:
             d[k] = getattr(top, k)
@@ -758,7 +757,7 @@ def gene_info(d_and_impacts_headers):
                              exon=impact.exon, codon_change=impact.codon_change,
                              aa_change=impact.aa_change, aa_length=impact.aa_length,
                              biotype=impact.biotype, top_consequence=impact.top_consequence,
-                             so=impact.so, effect_severity=impact.effect_severity,
+                             so=impact.so, impact_severity=impact.effect_severity,
                              polyphen_pred=impact.polyphen_pred,
                              polyphen_score=impact.polyphen_score,
                              sift_pred=impact.sift_pred,
