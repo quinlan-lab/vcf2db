@@ -70,9 +70,11 @@ else:
 
 def from_bytes(s):
     if isinstance(s, bytes):
-        return s.decode(ENC)
+		try:
+			return s.decode(ENC)
+        except UnicodeDecodeError:
+            return s.decode('utf8')
     return s
-
 
 
 def fix_sample_name(s, patt=re.compile('-|\s|\\\\')):
