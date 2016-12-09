@@ -70,8 +70,8 @@ else:
 
 def from_bytes(s):
     if isinstance(s, bytes):
-		try:
-			return s.decode(ENC)
+        try:
+            return s.decode(ENC)
         except UnicodeDecodeError:
             return s.decode('utf8')
     return s
