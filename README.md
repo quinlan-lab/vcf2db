@@ -12,7 +12,7 @@ python vcf2db.py diseaseX.anno.vcf.gz disease_x.ped "mysql://brentp:password@loc
 With sqlite3. This inserts at about 1200 variants / second including time to index.
 
 **NOTE** while this allows loading into `mysql` and `postgres`, you will need gemini version
-from github to use the database once it is loaded into `mysql` and `postgres`.
+from github to use the database once it is loaded into `mysql` and `postgres`. Due to some [idiosyncrasies](http://docs.aws.amazon.com/efs/latest/ug/nfs4-unsupported-features.html), Amazon's Elastic File Storage (EFS) is not supported for the creation of sqlite3 databases. Elastic Block Storage (EBS) is suitable for this step.
 
 Installation
 ============
