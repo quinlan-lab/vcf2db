@@ -304,8 +304,12 @@ class VCFDB(object):
             # set afs columns to -1 by default.
             for col in self.af_cols:
                 af_val = variant.get(col)
-                if af_val is None or np.isnan(af_val):
-                    variant[col] = -1.0
+                try:
+                    if af_val is None or af_val == "" or (not isinstance(af_val, basestring) and np.isnan(af_val)):
+                        variant[col] = -1.0
+                except TypeError:
+                    print(af_val, type(af_val))
+                    raise
             variant_impacts.extend(impacts)
             ivariants.append(variant)
         te = time.time() - te
