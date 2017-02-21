@@ -40,6 +40,12 @@ def test_load():
     yield check_samples, metadata
     yield check_variants, metadata
     yield check_aaf, metadata
+    yield check_cap, metadata
+
+def check_cap(metadata):
+    tbl = metadata.tables["variants"]
+    vs = [x[0] for x in sql.select([tbl.c.m_cap_pred]).execute()]
+    assert vs[0] == "testing"
 
 def check_aaf(metadata):
 

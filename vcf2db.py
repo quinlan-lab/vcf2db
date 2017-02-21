@@ -559,7 +559,7 @@ class VCFDB(object):
 
     def get_extra_cols(self):
         for c in self.extra_columns:
-            yield sql.Column(c.lower(), sql.String(10))
+            yield sql.Column(clean(c), sql.String(10))
 
     def variants_default_columns(self):
         return [
@@ -731,7 +731,7 @@ def gene_info(d_and_impacts_headers):
         for k in keys:
             d[k] = getattr(top, k)
         for k in extra_columns:
-            d[k.lower()] = top.effects.get(k, '')
+            d[clean(k)] = top.effects.get(k, '')
 
     d['impact'] = top.top_consequence
     d['impact_so'] = top.so
@@ -747,9 +747,9 @@ def gene_info(d_and_impacts_headers):
     for k in (rc for rc in req_cols if not rc.islower()):
         if k in stringers:
             v = encode(d.get(k))
-            u[k.lower()] = v
+            u[clean(k)] = v
         else:
-            u[k.lower()] = d.get(k)
+            u[clean(k)] = d.get(k)
 
 
     d = u
@@ -769,7 +769,7 @@ def gene_info(d_and_impacts_headers):
                              sift_pred=impact.sift_pred,
                              sift_score=impact.sift_score))
         for k in impact.unused():
-            gimpacts[-1][k.lower()] = impact.effects.get(k, '')
+            gimpacts[-1][clean(k)] = impact.effects.get(k, '')
     return d, gimpacts
 
 def encode(v):
