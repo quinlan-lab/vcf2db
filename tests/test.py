@@ -1,6 +1,6 @@
 from __future__ import print_function
 import os
-from vcf2db import VCFDB, get_dburl
+from vcf2db import VCFDB, get_dburl, clean
 import atexit
 import sqlalchemy as sql
 import sys
@@ -19,6 +19,28 @@ def rm(f):
         pass
 
 #atexit.register(rm, db)
+
+def test_extra_impacts():
+    db = "tests/xx-impacts.db"
+    impacts_extras=["MQ", "QD", "HRun", "M-CAP_pred"]
+    v = VCFDB(vcf, db, ped, impacts_extras=impacts_extras)
+    eng = sql.create_engine(get_dburl(db))
+    metadata = sql.MetaData(bind=eng)
+    metadata.reflect()
+
+    yield check_header, metadata
+    yield check_samples, metadata
+    yield check_variants, metadata
+    yield check_aaf, metadata
+    yield check_cap, metadata
+
+    vi = metadata.tables["variant_impacts"]
+    ixs = list(map(clean, impacts_extras))
+
+    # check that all of the impacts_extras are in the variant_impacts table.
+    cs = {c.name: c for c in vi.columns}
+    for c in ixs:
+        assert c in cs
 
 def test_load():
 
