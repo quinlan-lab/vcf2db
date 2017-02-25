@@ -299,7 +299,7 @@ class VCFDB(object):
 
         for variant, impacts in map(gene_info, ((v,
                      self.impacts_headers, self.blobber, self.gt_cols, keys,
-                     has_samples, self.stringers, self.extra_columns) for
+                     has_samples, self.stringers, self.extra_columns, self.impacts_extras) for
                      v in variants)
                      ):
             # set afs columns to -1 by default.
@@ -737,7 +737,7 @@ KEY_2_CLASS = {
 def gene_info(d_and_impacts_headers):
     # this is parallelized as it's only simple objects and the gene impacts
     # stuff is slow.
-    d, impacts_headers, blobber, gt_cols, req_cols, has_samples, stringers, extra_columns = d_and_impacts_headers
+    d, impacts_headers, blobber, gt_cols, req_cols, has_samples, stringers, extra_columns, impacts_extras = d_and_impacts_headers
     impacts = []
     for k, cls in KEY_2_CLASS.items():
         if not k in d: continue
@@ -796,8 +796,12 @@ def gene_info(d_and_impacts_headers):
                              polyphen_score=impact.polyphen_score,
                              sift_pred=impact.sift_pred,
                              sift_score=impact.sift_score))
+        lv = gimpacts[-1]
         for k in impact.unused():
-            gimpacts[-1][clean(k)] = impact.effects.get(k, '')
+            lv[clean(k)] = impact.effects.get(k, '')
+        for k in impacts_extras:
+            lv[k] = d[k]
+
     return d, gimpacts
 
 def encode(v):
