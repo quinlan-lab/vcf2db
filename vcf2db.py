@@ -846,4 +846,4 @@ if __name__ == "__main__":
     main_blobber = pack_blob if a.legacy_compression else snappy_pack_blob
 
     VCFDB(a.VCF, a.db, a.ped, black_list=a.info_exclude, expand=a.expand, blobber=main_blobber,
-          impacts_extras=p.impacts_field)
+          impacts_extras=a.impacts_field)
