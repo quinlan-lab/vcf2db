@@ -800,7 +800,7 @@ def gene_info(d_and_impacts_headers):
         for k in impact.unused():
             lv[clean(k)] = impact.effects.get(k, '')
         for k in impacts_extras:
-            lv[k] = d[k]
+            lv[k] = d.get(k)
 
     return d, gimpacts
 
