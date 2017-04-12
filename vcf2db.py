@@ -428,9 +428,9 @@ class VCFDB(object):
                 try:
                     if col.type.length < len(str(d.get(name, ''))):
                         # col.type.length = int(1.618 * len(d[name]) + 0.5)
-                        col.type.length = int(1.2 * len(d[name]) + 0.5)
+                        col.type.length = int(1.2 * len(str(d[name])) + 0.5)
                 except:
-                    print(name, col.type.length)
+                    print(name, col.type, file=sys.stderr)
                     raise
                 if col.type.length > 48:
                     col.type = sql.TEXT()
