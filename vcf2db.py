@@ -670,14 +670,14 @@ class VCFDB(object):
     def type_for_field(self, d):
         """ returns sql.Column, string cid, bool af_col, bool stringer"""
 
-        if d['Number'] in "RA":
+        cid = clean(d["ID"])
+        if (d['Number'] in "RA" and not af_like(cid)) or (d['Number'].isdigit() and d['Number'] != '1'):
             print("skipping '%s' because it has Number=%s" % (d["ID"], d["Number"]),
                   file=sys.stderr)
             return None, None, None, None
 
         af_col = False
         stringer = False
-        cid = clean(d["ID"])
         col = None
         if d["ID"] in self.black_list or cid in self.black_list:
             return None, None, None, None
@@ -717,7 +717,7 @@ class VCFDB(object):
         self.stringers = set(self.stringers)
 
 def af_like(cid):
-    return cid.endswith(("_af", "_aaf")) or cid.startswith(("af_", "aaf_", "an_")) or "_aaf_" in cid
+    return cid.endswith(("_af", "_aaf")) or cid.startswith(("af_", "aaf_", "an_")) or "_aaf_" in cid or "_af_" in cid
 
 class noner(object):
     def __getattr__(self, key):
