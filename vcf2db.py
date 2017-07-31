@@ -774,13 +774,16 @@ def gene_info(d_and_impacts_headers):
     u = dict.fromkeys(req_cols)
     u.update(d)
     for k in (rc for rc in req_cols if not rc.islower()):
+        ck = clean(k)
+        if ck in d: continue
         if k in stringers:
             v = encode(d.get(k))
-            u[clean(k)] = v
+            u[ck] = v
         else:
-            u[clean(k)] = d.get(k)
+            u[ck] = d.get(k)
 
     d = u
+    assert d['start'] is not None
     gimpacts = []
     for impact in impacts:
         #gimpacts.append({k: getattr(impact, k) for k in keys})
@@ -802,6 +805,7 @@ def gene_info(d_and_impacts_headers):
         for k in impacts_extras:
             lv[k] = d.get(k)
 
+    assert d['start'] is not None
     return d, gimpacts
 
 def encode(v):
