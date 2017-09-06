@@ -758,7 +758,8 @@ def gene_info(d_and_impacts_headers):
 
     if has_samples:
         for k in keys:
-            d[k] = getattr(top, k)
+            if not k in d:
+                d[k] = getattr(top, k)
         for k in extra_columns:
             d[clean(k)] = top.effects.get(k, '')
 
@@ -804,7 +805,6 @@ def gene_info(d_and_impacts_headers):
             lv[clean(k)] = impact.effects.get(k, '')
         for k in impacts_extras:
             lv[k] = d.get(k)
-
     assert d['start'] is not None
     return d, gimpacts
 
