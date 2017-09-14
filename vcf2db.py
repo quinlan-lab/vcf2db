@@ -193,9 +193,10 @@ class VCFDB(object):
     _black_list = []
 
     def __init__(self, vcf_path, db_path, ped_path=None, blobber=pack_blob,
-                 black_list=None, expand=None, impacts_extras=None):
+                 black_list=None, expand=None, impacts_extras=None, aok=False):
         self.vcf_path = vcf_path
         self.db_path = get_dburl(db_path)
+        self.aok = aok
         self.engine = sql.create_engine(self.db_path, poolclass=sql.pool.NullPool)
         self.impacts_headers = {}
         self.metadata = sql.MetaData(bind=self.engine)
@@ -227,6 +228,8 @@ class VCFDB(object):
         d['aaf'] = v.aaf
 
     def _load(self, iterable, create, start):
+
+        self.bool_cols = [v.name for v in self.variants_columns if str(v.type) == "BOOLEAN"]
 
         variants = []
         expanded = {k: [] for k in self.expand}
@@ -311,6 +314,9 @@ class VCFDB(object):
                 except TypeError:
                     print(af_val, type(af_val))
                     raise
+            for b in self.bool_cols:
+                if variant.get(b) is None:
+                    variant[b] = False
             variant_impacts.extend(impacts)
             ivariants.append(variant)
         te = time.time() - te
@@ -671,10 +677,11 @@ class VCFDB(object):
         """ returns sql.Column, string cid, bool af_col, bool stringer"""
 
         cid = clean(d["ID"])
-        if (d['Number'] in "RA" and not af_like(cid)) or (d['Number'].isdigit() and d['Number'] != '1'):
-            print("skipping '%s' because it has Number=%s" % (d["ID"], d["Number"]),
-                  file=sys.stderr)
-            return None, None, None, None
+        if (d['Number'] in "RA" and not af_like(cid)) or (d['Number'].isdigit() and (d['Number'] != '1' and d['Type'] != 'Flag')):
+            if not d["ID"] in self.aok:
+                print("skipping '%s' because it has Number=%s" % (d["ID"], d["Number"]),
+                      file=sys.stderr)
+                return None, None, None, None
 
         af_col = False
         stringer = False
@@ -685,7 +692,9 @@ class VCFDB(object):
         if cid == "id":
             cid = "idx"
 
-        if af_like(cid):
+        if d['Type'] == 'Flag':
+            col = sql.Column(cid, sql.Boolean(), default=False, nullable=True)
+        elif af_like(cid):
             col = sql.Column(cid, sql.Float(), default=-1.0, nullable=False)
             af_col = True
         elif d['Number'] == '.':
@@ -830,6 +839,8 @@ if __name__ == "__main__":
     p.add_argument("VCF")
     p.add_argument("ped")
     p.add_argument("db")
+    p.add_argument("--a-ok", action='append', default=[],
+        help="list of info names to include even with Number=A (will error if they have > 1 value")
     p.add_argument("-e", "--info-exclude", action='append',
                    help="don't save this field to the database. May be specified " \
                         "multiple times.")
@@ -850,4 +861,4 @@ if __name__ == "__main__":
     main_blobber = pack_blob if a.legacy_compression else snappy_pack_blob
 
     VCFDB(a.VCF, a.db, a.ped, black_list=a.info_exclude, expand=a.expand, blobber=main_blobber,
-          impacts_extras=a.impacts_field)
+          impacts_extras=a.impacts_field, aok=a.a_ok)
