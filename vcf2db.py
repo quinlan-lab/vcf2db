@@ -38,6 +38,7 @@ __version__ = "0.0.1"
 GT_TYPE_LOOKUP = {
         'gt_depths': sql.Integer,
         'gt_ref_depths': sql.Integer,
+        'gt_alt_freqs': sql.Float,
         'gt_alt_depths': sql.Integer,
         'gt_quals': sql.Float,
         'gt_types': sql.SmallInteger,
@@ -187,7 +188,7 @@ def get_dburl(db_path):
 
 class VCFDB(object):
     gt_cols = ("gts", "gt_types", "gt_phases", "gt_depths", "gt_ref_depths",
-               "gt_alt_depths", "gt_quals")
+               "gt_alt_depths", "gt_quals", "gt_alt_freqs")
 
     effect_list = ["CSQ", "ANN", "EFF", "BCSQ"]
     _black_list = []
