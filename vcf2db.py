@@ -197,7 +197,7 @@ class VCFDB(object):
                  black_list=None, expand=None, impacts_extras=None, aok=False):
         self.vcf_path = vcf_path
         self.db_path = get_dburl(db_path)
-        self.aok = aok
+        self.aok = aok or []
         self.engine = sql.create_engine(self.db_path, poolclass=sql.pool.NullPool)
         self.impacts_headers = {}
         self.metadata = sql.MetaData(bind=self.engine)
