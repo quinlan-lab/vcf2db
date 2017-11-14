@@ -2,10 +2,13 @@ language: python
 
 python:
     - "2.7"
-    - "3.4"
+    - "3.6"
 
 install:
     - pip install -r requirements.txt
     - pip install nose
 
-script: nosetests
+script:
+    - nosetests
+    - python vcf2db.py --legacy-compression tests/error_test.vcf.gz tests/error_test.ped x.db
+    - python vcf2db.py tests/error_test.vcf.gz tests/error_test.ped x.db

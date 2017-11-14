@@ -12,6 +12,10 @@ try:
     import cPickle as pickle
 except ImportError:
     import pickle
+try:
+    basestring
+except NameError:
+    basestring = str
 
 import time
 from collections import defaultdict
@@ -128,7 +132,8 @@ def snappy_pack_blob(obj, sep=SEP):
     if obj is None: return ''
     c = obj.dtype.char
     if c == 'S': return 'S' + snappy.compress(sep.join(obj))
-    return buffer(c + snappy.compress(obj.tobytes()))
+    ss = c.encode('utf8') + snappy.compress(obj.tobytes())
+    return buffer(ss)
 
 def pack_blob(obj, _none=zlib.compress(pickle.dumps(None, pickle.HIGHEST_PROTOCOL))):
     if obj is None: return _none
@@ -139,7 +144,7 @@ def clean(name):
     """
     turn a vcf id into a db name
     """
-    return name.replace("-", "_").replace(" ", "_").strip('"').strip("'").lower()
+    return name.replace("-", "_").replace(".", "_").replace(" ", "_").strip('"').strip("'").lower()
 
 def info_parse(line,
                _patt=re.compile("(\w+)=(\"[^\"]+\"|[^,]+)")):
@@ -433,11 +438,13 @@ class VCFDB(object):
             if name in exclude_cols: continue
             for d in dicts:
                 try:
-                    if col.type.length < len(str(d.get(name, ''))):
+                    value = d.get(name, '')
+                    if value is None or not isinstance(value, (str, unicode)): continue
+                    if col.type.length < len(value):
                         # col.type.length = int(1.618 * len(d[name]) + 0.5)
-                        col.type.length = int(1.2 * len(str(d[name])) + 0.5)
+                        col.type.length = int(1.2 * len(value) + 0.5)
                 except:
-                    print(name, col.type, file=sys.stderr)
+                    print(name, col.type, value, file=sys.stderr)
                     raise
                 if col.type.length > 48:
                     col.type = sql.TEXT()
