@@ -165,7 +165,8 @@ class String(TypeDecorator):
 
     def process_bind_param(self, value, dialect):
         if isinstance(value, (unicode, str)):
-            return b(value).decode(ESCAPE)
+            return value.decode('ascii', 'ignore')
+            #return b(value).decode(ESCAPE, 'replace')
         return value
 
 class Unicode(TypeDecorator):
