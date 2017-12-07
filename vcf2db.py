@@ -35,6 +35,7 @@ except ImportError:
 import pstats
 import contextlib
 import locale
+import codecs
 ENC = locale.getpreferredencoding()
 
 __version__ = "0.0.1"
@@ -165,7 +166,7 @@ class String(TypeDecorator):
 
     def process_bind_param(self, value, dialect):
         if isinstance(value, (unicode, str)):
-            return value.decode('ascii', 'ignore')
+            return codecs.ascii_decode(value.encode('utf8'), 'ignore')[0]
             #return b(value).decode(ESCAPE, 'replace')
         return value
 
@@ -397,9 +398,15 @@ class VCFDB(object):
                         for o in g:
                             try:
                                 trans.execute(stmt, o)
-                            except:
-                                print("bad record:", o)
-                                raise
+                            except Exception as e:
+                                print("bad record:")
+                                for k, v in sorted(o.items()):
+                                    try:
+                                      print(k, str(v))
+                                    except:
+                                      print(k, v.__class___.__name__)
+
+                                raise e
                     raise
         else:
             try:
