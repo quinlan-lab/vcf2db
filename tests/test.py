@@ -33,6 +33,7 @@ def test_extra_impacts():
     yield check_variants, metadata
     yield check_aaf, metadata
     yield check_cap, metadata
+    yield check_sample_genotype_counts, metadata
 
     vi = metadata.tables["variant_impacts"]
     ixs = list(map(clean, impacts_extras))
@@ -63,6 +64,7 @@ def test_load():
     yield check_variants, metadata
     yield check_aaf, metadata
     yield check_cap, metadata
+    yield check_sample_genotype_counts, metadata
 
 def check_cap(metadata):
     tbl = metadata.tables["variants"]
@@ -127,6 +129,18 @@ def check_expanded_length(metadata, field):
     b_res, = metadata.bind.execute(qry).fetchone()
 
     assert a_res == b_res
+
+def check_sample_genotype_counts(metadata):
+    cs = metadata.tables['sample_genotype_counts']
+    stmt = sql.select([cs])
+
+    sums = []
+    for s in metadata.bind.execute(stmt):
+        sums.append(sum(s[1:]))
+
+    assert len(set(sums)) == 1
+
+
 
 def check_expanded_columns(metadata, field):
 

@@ -239,6 +239,7 @@ class VCFDB(object):
         d['num_hom_ref'] = v.num_hom_ref
         d['num_het'] = v.num_het
         d['num_hom_alt'] = v.num_hom_alt
+        d['num_unknown'] = v.num_unknown
         d['aaf'] = v.aaf
 
     def write_sample_genotype_counts(self):
@@ -668,6 +669,7 @@ class VCFDB(object):
             sql.Column("num_hom_ref", sql.Integer()),
             sql.Column("num_het", sql.Integer()),
             sql.Column("num_hom_alt", sql.Integer()),
+            sql.Column("num_unknown", sql.Integer()),
             sql.Column("aaf", sql.Float()),
             sql.Column("hwe", sql.Float()),
             sql.Column("inbreeding_coef", sql.Float()),
