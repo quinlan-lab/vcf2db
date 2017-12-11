@@ -223,7 +223,13 @@ class VCFDB(object):
         self.cache = it.islice(self.vcf, 10000)
         self.create_columns()
         self.samples = self.create_samples()
+        self.genotype_counts = [
+            np.zeros(len(self.vcf.samples), dtype=int),
+            np.zeros(len(self.vcf.samples), dtype=int),
+            np.zeros(len(self.vcf.samples), dtype=int),
+            np.zeros(len(self.vcf.samples), dtype=int)]
         self.load()
+        self.write_sample_genotype_counts()
         self.index()
 
     def _set_variant_properties(self, v, d):
@@ -234,6 +240,16 @@ class VCFDB(object):
         d['num_het'] = v.num_het
         d['num_hom_alt'] = v.num_hom_alt
         d['aaf'] = v.aaf
+
+    def write_sample_genotype_counts(self):
+        t = self.genotype_counts_table
+        self.engine.execute(t.insert(), [
+            dict(sample=self.samples[i],
+                 num_hom_ref=self.genotype_counts[0][i],
+                 num_het=self.genotype_counts[1][i],
+                 num_hom_alt=self.genotype_counts[2][i],
+                 num_unknown=self.genotype_counts[3][i])
+            for i in range(len(self.samples))])
 
     def _load(self, iterable, create, start):
 
@@ -247,6 +263,7 @@ class VCFDB(object):
 
         for i, v in enumerate(iterable, start=start):
             d = dict(v.INFO)
+
             if self.sample_idxs is not None:
                 for c in self.gt_cols:
                     # named gt_bases in cyvcf2 and gts in db
@@ -256,6 +273,12 @@ class VCFDB(object):
                     # must copy or it goes away as it's a
                     # view of the C copy
                     d[c] = np.array(arr)
+
+            gt_types = d['gt_types']
+            self.genotype_counts[0][gt_types == self.vcf.HOM_REF] += 1
+            self.genotype_counts[1][gt_types == self.vcf.HET] += 1
+            self.genotype_counts[2][gt_types == self.vcf.HOM_ALT] += 1
+            self.genotype_counts[3][gt_types == self.vcf.UNKNOWN] += 1
 
             d['chrom'], d['start'], d['end'] = v.CHROM, v.start, v.end
             d['ref'], d['alt'] = v.REF, ",".join(v.ALT)
@@ -462,6 +485,16 @@ class VCFDB(object):
     def _create_tables(self):
         self.variant_impacts = sql.Table("variant_impacts", self.metadata, *self.variant_impacts_columns)
         self.variant_impacts.drop(checkfirst=True)
+
+        self.genotype_counts_table = sql.Table("sample_genotype_counts",
+            self.metadata,
+            sql.Column("sample_id", sql.Integer(), primary_key=True),
+            sql.Column("num_hom_ref", sql.Integer()),
+            sql.Column("num_het", sql.Integer()),
+            sql.Column("num_hom_alt", sql.Integer()),
+            sql.Column("num_unknown", sql.Integer()))
+        self.genotype_counts_table.drop(checkfirst=True)
+        self.genotype_counts_table.create()
 
         self.variants = sql.Table("variants", self.metadata, *self.variants_columns)
         self.variants.drop(checkfirst=True)
