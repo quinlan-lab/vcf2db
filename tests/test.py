@@ -1,9 +1,10 @@
 from __future__ import print_function
 import os
+import sys
+sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 from vcf2db import VCFDB, get_dburl, clean
 import atexit
 import sqlalchemy as sql
-import sys
 
 vcf = "tests/test.vcf"
 ped = "tests/test.ped"
