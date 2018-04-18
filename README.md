@@ -21,7 +21,7 @@ Installation
 git clone https://github.com/quinlan-lab/vcf2db
 cd vcf2db
 conda install -y gcc snappy # install the C library for snappy
-conda install -c nlesc python-snappy=0.5
+conda install -c conda-forge python-snappy 
 conda install -c bioconda cyvcf2 peddy
 pip install -r requirements.txt
 ```
