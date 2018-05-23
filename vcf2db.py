@@ -646,6 +646,7 @@ class VCFDB(object):
             sql.Column("is_coding", sql.Boolean()),
             sql.Column("is_lof", sql.Boolean()),
             sql.Column("is_splicing", sql.Boolean()),
+            sql.Column("is_canonical", sql.Boolean()),
             sql.Column("exon", sql.String(8)),
             sql.Column("codon_change", sql.TEXT()),
             sql.Column("aa_change", sql.TEXT()),
@@ -812,6 +813,7 @@ def gene_info(d_and_impacts_headers):
         top = noner
 
     keys = ('gene', 'transcript', 'is_exonic', 'is_coding', 'is_splicing',
+            'is_canonical',
             'is_lof', 'exon', 'codon_change', 'aa_change', 'aa_length',
             'biotype', 'top_consequence', 'so', 'effect_severity',
             'polyphen_pred', 'polyphen_score', 'sift_pred', 'sift_score')
@@ -821,7 +823,8 @@ def gene_info(d_and_impacts_headers):
             if not k in d:
                 d[k] = getattr(top, k)
         for k in extra_columns:
-            d[clean(k)] = top.effects.get(k, '')
+            if not clean(k) in d:
+                d[clean(k)] = top.effects.get(k, '')
 
     d['impact'] = top.top_consequence
     d['impact_so'] = top.so
@@ -852,6 +855,7 @@ def gene_info(d_and_impacts_headers):
                              gene=impact.gene, transcript=impact.transcript,
                              is_exonic=impact.is_exonic, is_coding=impact.is_coding,
                              is_splicing=impact.is_splicing, is_lof=impact.is_lof,
+                             is_canonical=impact.is_canonical,
                              exon=impact.exon, codon_change=impact.codon_change,
                              aa_change=impact.aa_change, aa_length=impact.aa_length,
                              biotype=impact.biotype, top_consequence=impact.top_consequence,
