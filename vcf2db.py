@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 """
 Take a VCF and create a gemini compatible database
 """
