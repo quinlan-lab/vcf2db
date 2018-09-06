@@ -643,6 +643,7 @@ class VCFDB(object):
         # all of these are also stored in the variant_impacts table.
         return [
             sql.Column("gene", sql.String(20)),
+            sql.Column("ensembl_gene_id", sql.String(20)),
             sql.Column("transcript", sql.String(20)),
             sql.Column("is_exonic", sql.Boolean()),
             sql.Column("is_coding", sql.Boolean()),
@@ -814,7 +815,7 @@ def gene_info(d_and_impacts_headers):
     elif top is None:
         top = noner
 
-    keys = ('gene', 'transcript', 'is_exonic', 'is_coding', 'is_splicing',
+    keys = ('gene', 'ensembl_gene_id','transcript', 'is_exonic', 'is_coding', 'is_splicing',
             'is_canonical',
             'is_lof', 'exon', 'codon_change', 'aa_change', 'aa_length',
             'biotype', 'top_consequence', 'so', 'effect_severity',
@@ -854,7 +855,8 @@ def gene_info(d_and_impacts_headers):
     for impact in impacts:
         #gimpacts.append({k: getattr(impact, k) for k in keys})
         gimpacts.append(dict(variant_id=d['variant_id'],
-                             gene=impact.gene, transcript=impact.transcript,
+                             gene=impact.gene, ensembl_gene_id=impact.ensembl_gene_id,
+                             transcript=impact.transcript,
                              is_exonic=impact.is_exonic, is_coding=impact.is_coding,
                              is_splicing=impact.is_splicing, is_lof=impact.is_lof,
                              is_canonical=impact.is_canonical,
