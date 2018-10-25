@@ -343,7 +343,7 @@ class VCFDB(object):
             for col in self.af_cols:
                 af_val = variant.get(col)
                 try:
-                    if af_val is None or af_val == "" or (not isinstance(af_val, basestring) and np.isnan(af_val)):
+                    if af_val is None or af_val == "" or af_val == "." or (not isinstance(af_val, basestring) and np.isnan(af_val)):
                         variant[col] = -1.0
                 except TypeError, ValueError:
                     print(col, af_val, type(af_val))
